@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
-import youtubeRouter from './src/server/youtubeRouter';
+import { handleApiRequest } from './worker/index';
 
 dotenv.config();
 
@@ -13,8 +13,33 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Backend API routes
-  app.use('/api/youtube', youtubeRouter);
+  // Backend API routes forwarded to Cloudflare Worker handler
+  app.all('/api/*', async (req, res) => {
+    try {
+      const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+      const webReq = new Request(fullUrl, {
+        method: req.method,
+        headers: req.headers as Record<string, string>,
+        body: req.method !== 'GET' && req.method !== 'HEAD' && req.body ? JSON.stringify(req.body) : undefined,
+      });
+
+      const env = {
+        YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY,
+      };
+
+      const webRes = await handleApiRequest(webReq, env);
+      res.status(webRes.status);
+      webRes.headers.forEach((val, key) => {
+        res.setHeader(key, val);
+      });
+
+      const bodyText = await webRes.text();
+      res.send(bodyText);
+    } catch (err: any) {
+      console.error('Worker dispatch error:', err);
+      res.status(500).json({ error: 'SERVER_ERROR', message: err?.message || 'Error processing request' });
+    }
+  });
 
   if (!isProd) {
     // Mount Vite dev middlewares

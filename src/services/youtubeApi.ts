@@ -67,7 +67,7 @@ export async function fetchVideosFeed(category: string = 'All', pageToken?: stri
   }
 
   try {
-    const res = await fetch(`/api/youtube/feed?category=${encodeURIComponent(category)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
+    const res = await fetch(`/api/feed?category=${encodeURIComponent(category)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
     if (res.ok) {
       const json = await res.json();
       if (json.data && json.data.length > 0) {
@@ -76,7 +76,7 @@ export async function fetchVideosFeed(category: string = 'All', pageToken?: stri
       }
     }
   } catch (err) {
-    console.warn('API route call fallback:', err);
+    console.warn('API feed route fallback:', err);
   }
 
   // Graceful fallback to rich curated video set
@@ -100,6 +100,29 @@ export async function fetchVideosFeed(category: string = 'All', pageToken?: stri
   return result;
 }
 
+export async function fetchTrendingFeed(category: string = 'All', pageToken?: string): Promise<ApiResponse<VideoItem[]>> {
+  const cacheKey = `trending_${category}_${pageToken || 'first'}`;
+  const cached = clientCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const res = await fetch(`/api/trending?category=${encodeURIComponent(category)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data && json.data.length > 0) {
+        clientCache.set(cacheKey, { data: json, timestamp: Date.now() });
+        return json;
+      }
+    }
+  } catch (err) {
+    console.warn('API trending route fallback:', err);
+  }
+
+  return fetchVideosFeed(category, pageToken);
+}
+
 export async function searchYouTubeVideos(query: string, pageToken?: string): Promise<ApiResponse<VideoItem[]>> {
   if (!query.trim()) return { data: [] };
   const cacheKey = `search_${query}_${pageToken || 'first'}`;
@@ -109,7 +132,7 @@ export async function searchYouTubeVideos(query: string, pageToken?: string): Pr
   }
 
   try {
-    const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
     if (res.ok) {
       const json = await res.json();
       if (json.data && json.data.length > 0) {
@@ -147,7 +170,7 @@ export async function fetchVideoById(videoId: string): Promise<VideoItem | null>
   }
 
   try {
-    const res = await fetch(`/api/youtube/video/${videoId}`);
+    const res = await fetch(`/api/video/${videoId}`);
     if (res.ok) {
       const json = await res.json();
       if (json.data) {
@@ -185,7 +208,7 @@ export async function fetchVideoById(videoId: string): Promise<VideoItem | null>
 
 export async function fetchRelatedVideos(videoId: string): Promise<VideoItem[]> {
   try {
-    const res = await fetch(`/api/youtube/related/${videoId}`);
+    const res = await fetch(`/api/related/${videoId}`);
     if (res.ok) {
       const json = await res.json();
       if (json.data && json.data.length > 0) return json.data;
@@ -198,7 +221,7 @@ export async function fetchRelatedVideos(videoId: string): Promise<VideoItem[]> 
 
 export async function fetchShortsFeed(): Promise<VideoItem[]> {
   try {
-    const res = await fetch('/api/youtube/shorts');
+    const res = await fetch('/api/shorts');
     if (res.ok) {
       const json = await res.json();
       if (json.data && json.data.length > 0) return json.data;

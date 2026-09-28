@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Compass, Flame } from 'lucide-react';
 import { VideoItem } from '../types';
-import { fetchVideosFeed } from '../services/youtubeApi';
+import { fetchTrendingFeed } from '../services/youtubeApi';
 import { VideoCard } from '../components/VideoCard';
 import { SkeletonGrid } from '../components/SkeletonGrid';
 
@@ -18,7 +18,7 @@ export const TrendingPage: React.FC = () => {
       setLoading(true);
       try {
         const categoryParam = activeTab === 'Now' ? 'All' : activeTab;
-        const res = await fetchVideosFeed(categoryParam);
+        const res = await fetchTrendingFeed(categoryParam);
         if (isMounted) {
           setVideos(res.data);
         }
