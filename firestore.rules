@@ -1,0 +1,96 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Test connection doc used to verify connection on boot
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isOwner(userId)
+        && incoming().id == userId
+        && incoming().displayName is string
+        && incoming().displayName.size() > 0
+        && incoming().displayName.size() <= 80;
+      allow update: if isOwner(userId)
+        && incoming().id == userId
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio', 'lastActive'])
+        && (incoming().displayName is string && incoming().displayName.size() > 0 && incoming().displayName.size() <= 80);
+      allow delete: if false;
+
+      // User's private subcollections
+      match /likes/{videoId} {
+        allow read, write: if isOwner(userId) && isValidId(videoId);
+      }
+
+      match /saved/{videoId} {
+        allow read, write: if isOwner(userId) && isValidId(videoId);
+      }
+
+      match /subscriptions/{channelId} {
+        allow read, write: if isOwner(userId) && isValidId(channelId);
+      }
+
+      match /history/{videoId} {
+        allow read, write: if isOwner(userId) && isValidId(videoId);
+      }
+
+      match /searches/{searchId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Video comments
+    match /videos/{videoId}/comments/{commentId} {
+      allow read: if isValidId(videoId);
+      allow create: if isSignedIn()
+        && isValidId(videoId)
+        && isValidId(commentId)
+        && incoming().authorUid == request.auth.uid
+        && incoming().videoId == videoId
+        && incoming().text is string
+        && incoming().text.size() > 0
+        && incoming().text.size() <= 1000;
+      allow update: if isSignedIn()
+        && existing().authorUid == request.auth.uid
+        && incoming().authorUid == request.auth.uid
+        && incoming().videoId == videoId
+        && incoming().text is string
+        && incoming().text.size() > 0
+        && incoming().text.size() <= 1000
+        && incoming().diff(existing()).affectedKeys().hasOnly(['text', 'updatedAt', 'edited']);
+      allow delete: if isSignedIn()
+        && existing().authorUid == request.auth.uid;
+    }
+  }
+}

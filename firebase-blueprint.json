@@ -1,0 +1,128 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "photoURL": { "type": "string", "maxLength": 1000 },
+        "email": { "type": "string", "maxLength": 254 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastActive": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "displayName", "photoURL", "email", "createdAt", "lastActive"]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "Video liked by user",
+      "type": "object",
+      "properties": {
+        "videoId": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 300 },
+        "thumbnail": { "type": "string", "maxLength": 1000 },
+        "channelTitle": { "type": "string", "maxLength": 100 },
+        "likedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["videoId", "title", "thumbnail", "channelTitle", "likedAt"]
+    },
+    "SavedVideo": {
+      "title": "SavedVideo",
+      "description": "Video saved in library / watch later",
+      "type": "object",
+      "properties": {
+        "videoId": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 300 },
+        "thumbnail": { "type": "string", "maxLength": 1000 },
+        "channelTitle": { "type": "string", "maxLength": 100 },
+        "savedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["videoId", "title", "thumbnail", "channelTitle", "savedAt"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "Channel subscribed to by user",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "channelTitle": { "type": "string", "maxLength": 100 },
+        "channelThumbnail": { "type": "string", "maxLength": 1000 },
+        "subscribedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["channelId", "channelTitle", "channelThumbnail", "subscribedAt"]
+    },
+    "WatchHistory": {
+      "title": "WatchHistory",
+      "description": "Recorded video watch event",
+      "type": "object",
+      "properties": {
+        "videoId": { "type": "string", "maxLength": 32, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 300 },
+        "thumbnail": { "type": "string", "maxLength": 1000 },
+        "channelTitle": { "type": "string", "maxLength": 100 },
+        "watchedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["videoId", "title", "thumbnail", "channelTitle", "watchedAt"]
+    },
+    "RecentSearch": {
+      "title": "RecentSearch",
+      "description": "Search query saved by user",
+      "type": "object",
+      "properties": {
+        "query": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "searchedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["query", "searchedAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "User comment or reply on a video",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "videoId": { "type": "string", "maxLength": 32 },
+        "authorUid": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "authorPhoto": { "type": "string", "maxLength": 1000 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "parentId": { "type": "string", "maxLength": 128 },
+        "edited": { "type": "boolean" }
+      },
+      "required": ["id", "videoId", "authorUid", "authorName", "authorPhoto", "text", "createdAt", "updatedAt", "edited"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile document storing public identity and settings"
+    },
+    "/users/{userId}/likes/{videoId}": {
+      "schema": "Like",
+      "description": "User's liked videos"
+    },
+    "/users/{userId}/saved/{videoId}": {
+      "schema": "SavedVideo",
+      "description": "User's saved videos in library"
+    },
+    "/users/{userId}/subscriptions/{channelId}": {
+      "schema": "Subscription",
+      "description": "Channels the user is subscribed to"
+    },
+    "/users/{userId}/history/{videoId}": {
+      "schema": "WatchHistory",
+      "description": "User's watch history entries"
+    },
+    "/users/{userId}/searches/{searchId}": {
+      "schema": "RecentSearch",
+      "description": "User's recent searches"
+    },
+    "/videos/{videoId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Public comments and threaded replies for a video"
+    }
+  }
+}

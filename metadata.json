@@ -1,0 +1,6 @@
+{
+  "name": "StreamHub - Modern Video Platform",
+  "description": "StreamHub is a fast, modern video discovery and watching web app. Discover trending videos, watch shorts, subscribe to creators, and curate your personal library.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
