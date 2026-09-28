@@ -314,7 +314,7 @@ export const ProfilePage: React.FC = () => {
                 {subscriptions.map((sub) => (
                   <div
                     key={sub.channelId}
-                    className="p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-850 flex flex-col items-center text-center"
+                    className="p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200/60 dark:border-neutral-800 flex flex-col items-center text-center"
                   >
                     <img
                       src={sub.channelThumbnail}

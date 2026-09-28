@@ -164,7 +164,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
           {/* Suggestions Dropdown */}
           {showSuggestions && recentSearches.length > 0 && (
-            <div className="absolute top-11 left-0 w-[calc(100%-54px)] bg-white dark:bg-neutral-850 rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-750 py-2 z-50 overflow-hidden">
+            <div className="absolute top-11 left-0 w-[calc(100%-54px)] bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800 py-2 z-50 overflow-hidden">
               <div className="px-3 py-1 text-2xs font-semibold uppercase tracking-wider text-neutral-400">
                 Recent Searches
               </div>
@@ -231,7 +231,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               </button>
 
               {showDropdown && (
-                <div className="absolute right-0 mt-2 w-60 bg-white dark:bg-neutral-850 rounded-2xl shadow-2xl border border-neutral-200 dark:border-neutral-800 py-2 z-50 text-sm animate-in fade-in slide-in-from-top-2">
+                <div className="absolute right-0 mt-2 w-60 bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-200 dark:border-neutral-800 py-2 z-50 text-sm animate-in fade-in slide-in-from-top-2">
                   <div className="px-4 py-2.5 border-b border-neutral-100 dark:border-neutral-800">
                     <p className="font-semibold text-neutral-900 dark:text-neutral-100 truncate">
                       {profile?.displayName || user.displayName || 'StreamHub User'}

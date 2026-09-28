@@ -387,7 +387,7 @@ export const WatchPage: React.FC = () => {
           </div>
 
           {/* Description Box */}
-          <div className="p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-850 text-xs sm:text-sm text-neutral-700 dark:text-neutral-300">
+          <div className="p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200/60 dark:border-neutral-800 text-xs sm:text-sm text-neutral-700 dark:text-neutral-300">
             <div className="flex items-center gap-2 font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
               <span>{formatViewCount(video.viewCount)} views</span>
               <span>•</span>

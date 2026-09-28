@@ -11,6 +11,7 @@ export const HistoryPage: React.FC = () => {
   const { openVideo } = useNavigation();
   const [history, setHistory] = useState<WatchHistoryItem[]>([]);
   const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -20,13 +21,12 @@ export const HistoryPage: React.FC = () => {
 
   const handleClearAll = async () => {
     if (!user) return;
-    if (confirm('Clear your entire watch history?')) {
-      setClearing(true);
-      try {
-        await clearWatchHistory(user.uid);
-      } finally {
-        setClearing(false);
-      }
+    setClearing(true);
+    try {
+      await clearWatchHistory(user.uid);
+      setConfirmClear(false);
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -66,14 +66,34 @@ export const HistoryPage: React.FC = () => {
         </div>
 
         {history.length > 0 && (
-          <button
-            onClick={handleClearAll}
-            disabled={clearing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 text-xs font-semibold transition-colors disabled:opacity-50"
-          >
-            <Trash2 size={14} />
-            <span>Clear history</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {confirmClear ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-neutral-500">Clear all?</span>
+                <button
+                  onClick={handleClearAll}
+                  disabled={clearing}
+                  className="px-2.5 py-1 rounded-md bg-red-600 text-white text-xs font-semibold hover:bg-red-700 disabled:opacity-50"
+                >
+                  {clearing ? 'Clearing...' : 'Yes, clear'}
+                </button>
+                <button
+                  onClick={() => setConfirmClear(false)}
+                  className="px-2.5 py-1 rounded-md border border-neutral-300 dark:border-neutral-700 text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmClear(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-300 dark:border-neutral-700 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 text-xs font-semibold transition-colors"
+              >
+                <Trash2 size={14} />
+                <span>Clear history</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
 

@@ -55,13 +55,15 @@ export const AuthModalPrompt: React.FC = () => {
               <p className="font-semibold mb-1">Sign-in Notice</p>
               <p>{authError}</p>
               <div className="mt-2">
-                <button
-                  onClick={() => window.open(window.location.href, '_blank')}
+                <a
+                  href={window.location.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
                 >
                   <ExternalLink size={12} />
                   Open app in new tab to sign in
-                </button>
+                </a>
               </div>
             </div>
           </div>
@@ -69,7 +71,7 @@ export const AuthModalPrompt: React.FC = () => {
 
         <button
           onClick={signInWithGoogle}
-          className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-750 font-medium text-neutral-800 dark:text-neutral-200 transition-all shadow-xs cursor-pointer active:scale-98"
+          className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 font-medium text-neutral-800 dark:text-neutral-200 transition-all shadow-xs cursor-pointer active:scale-98"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path

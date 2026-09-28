@@ -147,9 +147,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {isExpanded && (
           <div className="mt-auto pt-6 px-3 border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-400 dark:text-neutral-500 space-y-2">
             <div className="flex flex-wrap gap-x-2 gap-y-1">
-              <a href="#about" onClick={(e) => { e.preventDefault(); alert('StreamHub is an independent video discovery platform streaming via YouTube official embedded players.'); }} className="hover:underline">About</a>
-              <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer" className="hover:underline">YouTube Terms</a>
-              <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" className="hover:underline">Privacy Policy</a>
+              <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer" className="hover:underline">Terms of Service</a>
+              <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="hover:underline">Privacy Policy</a>
             </div>
             <p className="text-2xs">© 2026 StreamHub</p>
           </div>
