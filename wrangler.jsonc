@@ -6,6 +6,9 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "vars": {
+    "YOUTUBE_API_KEY": "AIzaSyCKR9lnAuoju3d4-237GgoClhzNn8sFda0"
+  },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

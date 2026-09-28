@@ -91,9 +91,11 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
   const url = new URL(request.url);
   // Normalize both /api/youtube/* and /api/*
   const pathname = url.pathname.replace(/^\/api\/youtube/, '/api');
-  const apiKey = env.YOUTUBE_API_KEY && env.YOUTUBE_API_KEY !== 'YOUR_YOUTUBE_DATA_API_V3_KEY' && env.YOUTUBE_API_KEY.length > 10
+  const DEFAULT_KEY = 'AIzaSyCKR9lnAuoju3d4-237GgoClhzNn8sFda0';
+  const rawKey = env.YOUTUBE_API_KEY && env.YOUTUBE_API_KEY !== 'YOUR_YOUTUBE_DATA_API_V3_KEY' && env.YOUTUBE_API_KEY.length > 10
     ? env.YOUTUBE_API_KEY
-    : undefined;
+    : DEFAULT_KEY;
+  const apiKey = rawKey && rawKey.length > 10 ? rawKey : undefined;
 
   // Cloudflare Cache API lookup
   const cacheKeyUrl = new URL(request.url);

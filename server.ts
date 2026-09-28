@@ -24,7 +24,7 @@ async function startServer() {
       });
 
       const env = {
-        YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY,
+        YOUTUBE_API_KEY: process.env.YOUTUBE_API_KEY || 'AIzaSyCKR9lnAuoju3d4-237GgoClhzNn8sFda0',
       };
 
       const webRes = await handleApiRequest(webReq, env);
