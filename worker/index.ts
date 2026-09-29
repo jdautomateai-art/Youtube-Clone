@@ -773,6 +773,38 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
       finalResponse = createJsonResponse({ channel: fallbackChannel, data: INITIAL_VIDEOS, apiKeyMissing: true, isCached: true }, 200, 300);
     }
   }
+  // 9. Search Autocomplete Suggestions route
+  else if (pathname === '/api/suggestions') {
+    const q = (url.searchParams.get('q') || '').trim();
+    if (!q) {
+      finalResponse = createJsonResponse({ suggestions: [] }, 200, 300);
+    } else {
+      try {
+        const suggestUrl = `https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(q)}`;
+        const sRes = await fetch(suggestUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+        if (sRes.ok) {
+          const sJson = await sRes.json() as any;
+          const suggestions = Array.isArray(sJson[1]) ? (sJson[1] as string[]).slice(0, 10) : [];
+          finalResponse = createJsonResponse({ suggestions }, 200, 300);
+        } else {
+          finalResponse = createJsonResponse({ suggestions: [] }, 200, 60);
+        }
+      } catch (err) {
+        const sampleKeywords = [
+          '4k nature relaxing video', 'wildlife documentary 4k', 'bbc earth nature',
+          'national geographic wildlife', 'veritasium science', 'lofi hip hop radio',
+          'deep ocean creatures', 'aurora borealis 4k', 'macro photography nature',
+          'mountain climbing documentary', 'ambient study music', 'kurzgesagt science'
+        ];
+        const filtered = sampleKeywords.filter(k => k.toLowerCase().includes(q.toLowerCase()));
+        finalResponse = createJsonResponse({ suggestions: filtered }, 200, 60);
+      }
+    }
+  }
   // Default not found for unknown /api/*
   else {
     finalResponse = createJsonResponse({ error: 'NOT_FOUND', message: 'API route not found' }, 404);

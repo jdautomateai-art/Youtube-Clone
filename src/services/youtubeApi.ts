@@ -337,3 +337,30 @@ export async function fetchShortsFeed(): Promise<VideoItem[]> {
   }
   return INITIAL_SHORTS;
 }
+
+export async function fetchSearchSuggestions(query: string): Promise<string[]> {
+  const clean = query.trim();
+  if (!clean) return [];
+
+  const cacheKey = `suggest_${clean.toLowerCase()}`;
+  const cached = clientCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < 1000 * 60 * 10) {
+    return cached.data;
+  }
+
+  try {
+    const res = await fetch(`/api/suggestions?q=${encodeURIComponent(clean)}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json.suggestions)) {
+        clientCache.set(cacheKey, { data: json.suggestions, timestamp: Date.now() });
+        return json.suggestions;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to fetch suggestions:', err);
+  }
+
+  return [];
+}
+

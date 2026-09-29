@@ -10,7 +10,9 @@ import {
   Bookmark,
   LogOut,
   ChevronDown,
-  Loader2
+  Loader2,
+  TrendingUp,
+  ArrowUpLeft
 } from 'lucide-react';
 import { Logo } from './Logo';
 import { OpenInNewTabButton } from './OpenInNewTabButton';
@@ -23,10 +25,21 @@ import {
   deleteRecentSearch,
   clearRecentSearches
 } from '../firebase/firestoreService';
+import { fetchSearchSuggestions } from '../services/youtubeApi';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
 }
+
+const TRENDING_SEARCH_SUGGESTIONS = [
+  '4k nature relaxing',
+  'wildlife documentary 4k',
+  'deep ocean creatures',
+  'veritasium science',
+  'lofi hip hop radio',
+  'aurora borealis 4k',
+  'kurzgesagt science'
+];
 
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const { user, profile, loading: authLoading, isSigningIn, signInWithGoogle, signOut } = useAuth();
@@ -38,9 +51,14 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [liveSuggestions, setLiveSuggestions] = useState<string[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
+  const mobileSearchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Sync search input with route query
   useEffect(() => {
@@ -67,13 +85,44 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     loadSearches();
   }, [user]);
 
+  // Debounced search autocomplete suggestions
+  useEffect(() => {
+    const trimmed = query.trim();
+    setSelectedIndex(-1);
+
+    if (!trimmed) {
+      setLiveSuggestions([]);
+      setLoadingSuggestions(false);
+      return;
+    }
+
+    setLoadingSuggestions(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await fetchSearchSuggestions(trimmed);
+        setLiveSuggestions(results);
+      } catch (e) {
+        setLiveSuggestions([]);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    }, 180);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
   // Click outside to close menus
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
       }
-      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(e.target as Node) &&
+        mobileSearchContainerRef.current &&
+        !mobileSearchContainerRef.current.contains(e.target as Node)
+      ) {
         setShowSuggestions(false);
       }
     };
@@ -123,6 +172,38 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     openSearch(text);
   };
 
+  const handleInsertSuggestion = (e: React.MouseEvent, text: string) => {
+    e.stopPropagation();
+    setQuery(text);
+    searchInputRef.current?.focus();
+  };
+
+  // Keyboard navigation for search suggestions
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    const activeList = query.trim()
+      ? liveSuggestions
+      : recentSearches.length > 0
+      ? recentSearches
+      : TRENDING_SEARCH_SUGGESTIONS;
+
+    if (!activeList.length || !showSuggestions) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev < activeList.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : activeList.length - 1));
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+    } else if (e.key === 'Enter') {
+      if (selectedIndex >= 0 && selectedIndex < activeList.length) {
+        e.preventDefault();
+        handleSelectSuggestion(activeList[selectedIndex]);
+      }
+    }
+  };
+
   return (
     <header className="sticky top-0 z-40 h-14 sm:h-16 w-full bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border-b border-neutral-200 dark:border-neutral-800 transition-colors">
       <div className="h-full px-3 sm:px-4 flex items-center justify-between gap-2 max-w-7xl mx-auto">
@@ -131,7 +212,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <button
             onClick={onToggleSidebar}
             aria-label="Toggle navigation menu"
-            className="p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 active:scale-95 transition-all"
+            className="p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 active:scale-95 transition-all cursor-pointer"
           >
             <Menu size={20} />
           </button>
@@ -141,31 +222,38 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           </div>
         </div>
 
-        {/* Center: Search Bar (Desktop / Tablet) */}
-        <div
-          ref={searchContainerRef}
-          className="relative hidden sm:flex items-center justify-center flex-1 max-w-xl mx-4"
-        >
-          <form
-            onSubmit={handleSearchSubmit}
-            className="relative w-full flex items-center"
-          >
-            <div className="relative w-full flex items-center">
+        {/* Center: Search Bar with Autocomplete Suggestions (Desktop) */}
+        <div className="hidden sm:flex flex-1 max-w-xl mx-4 relative" ref={searchContainerRef}>
+          <form onSubmit={handleSearchSubmit} className="flex w-full items-center relative">
+            <div className="relative flex-1 flex items-center">
               <input
+                ref={searchInputRef}
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setShowSuggestions(true);
+                }}
                 onFocus={() => setShowSuggestions(true)}
-                placeholder="Search videos, creators, topics..."
+                onKeyDown={handleKeyDown}
+                placeholder="Search videos, topics, or channels..."
                 aria-label="Search"
                 className="w-full h-10 pl-4 pr-10 rounded-l-full bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700/80 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-1 focus:ring-indigo-500 transition-all"
               />
+              {loadingSuggestions && (
+                <div className="absolute right-9 text-neutral-400">
+                  <Loader2 size={14} className="animate-spin" />
+                </div>
+              )}
               {query && (
                 <button
                   type="button"
-                  onClick={() => setQuery('')}
+                  onClick={() => {
+                    setQuery('');
+                    searchInputRef.current?.focus();
+                  }}
                   aria-label="Clear search"
-                  className="absolute right-3 p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                  className="absolute right-3 p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
                 >
                   <X size={15} />
                 </button>
@@ -174,45 +262,118 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             <button
               type="submit"
               aria-label="Submit search"
-              className="h-10 px-5 rounded-r-full bg-neutral-100 dark:bg-neutral-800 border border-l-0 border-neutral-300 dark:border-neutral-700/80 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 flex items-center justify-center transition-colors"
+              className="h-10 px-5 rounded-r-full bg-neutral-100 dark:bg-neutral-800 border border-l-0 border-neutral-300 dark:border-neutral-700/80 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 flex items-center justify-center transition-colors cursor-pointer"
             >
               <Search size={18} />
             </button>
           </form>
 
           {/* Suggestions Dropdown */}
-          {showSuggestions && recentSearches.length > 0 && (
-            <div className="absolute top-11 left-0 w-[calc(100%-54px)] bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800 py-2 z-50 overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider text-neutral-400 border-b border-neutral-100 dark:border-neutral-800">
-                <span>Recent Searches</span>
-                <button
-                  type="button"
-                  onClick={handleClearAllSearches}
-                  className="text-indigo-600 dark:text-indigo-400 hover:underline normal-case font-medium text-xs cursor-pointer"
-                >
-                  Clear all
-                </button>
-              </div>
-              {recentSearches.map((item, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => handleSelectSuggestion(item)}
-                  className="w-full px-3 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center justify-between gap-2.5 transition-colors group cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <Clock size={14} className="text-neutral-400 shrink-0" />
-                    <span className="truncate">{item}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteSearchItem(e, item)}
-                    title="Remove from search history"
-                    className="p-1 rounded-md text-neutral-400 hover:text-red-500 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors opacity-60 group-hover:opacity-100 cursor-pointer"
-                  >
-                    <X size={14} />
-                  </button>
+          {showSuggestions && (
+            <div className="absolute top-11 left-0 w-[calc(100%-54px)] bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl border border-neutral-200 dark:border-neutral-800 py-2 z-50 overflow-hidden animate-in fade-in slide-in-from-top-1">
+              {/* Scenario 1: Typing Query -> Show Live YouTube Autocomplete Suggestions */}
+              {query.trim().length > 0 ? (
+                <div>
+                  {liveSuggestions.length > 0 ? (
+                    liveSuggestions.map((item, idx) => {
+                      const isSelected = idx === selectedIndex;
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => handleSelectSuggestion(item)}
+                          className={`w-full px-3.5 py-2 text-left text-sm flex items-center justify-between gap-2.5 transition-colors group cursor-pointer ${
+                            isSelected
+                              ? 'bg-neutral-100 dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400'
+                              : 'text-neutral-800 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <Search size={15} className="text-neutral-400 shrink-0" />
+                            <span className="truncate">{item}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => handleInsertSuggestion(e, item)}
+                            title="Insert into search"
+                            className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          >
+                            <ArrowUpLeft size={15} />
+                          </button>
+                        </div>
+                      );
+                    })
+                  ) : !loadingSuggestions ? (
+                    <div className="px-4 py-3 text-xs text-neutral-400 flex items-center gap-2">
+                      <Search size={14} />
+                      <span>Press enter to search for "{query}"</span>
+                    </div>
+                  ) : null}
                 </div>
-              ))}
+              ) : (
+                /* Scenario 2: Empty Query -> Show Recent Searches & Trending Suggestions */
+                <div>
+                  {recentSearches.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between px-3.5 py-1 text-2xs font-bold uppercase tracking-wider text-neutral-400 border-b border-neutral-100 dark:border-neutral-800 mb-1">
+                        <span>Recent Searches</span>
+                        <button
+                          type="button"
+                          onClick={handleClearAllSearches}
+                          className="text-indigo-600 dark:text-indigo-400 hover:underline normal-case font-medium text-xs cursor-pointer"
+                        >
+                          Clear all
+                        </button>
+                      </div>
+
+                      {recentSearches.map((item, idx) => {
+                        const isSelected = idx === selectedIndex;
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => handleSelectSuggestion(item)}
+                            className={`w-full px-3.5 py-2 text-left text-sm flex items-center justify-between gap-2.5 transition-colors group cursor-pointer ${
+                              isSelected
+                                ? 'bg-neutral-100 dark:bg-neutral-800 text-indigo-600 dark:text-indigo-400'
+                                : 'text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <Clock size={15} className="text-neutral-400 shrink-0" />
+                              <span className="truncate">{item}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteSearchItem(e, item)}
+                              title="Remove from search history"
+                              className="p-1 rounded-md text-neutral-400 hover:text-red-500 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors opacity-60 group-hover:opacity-100 cursor-pointer"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Trending Suggestions */}
+                  <div className="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                    <div className="px-3.5 py-1 text-2xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5 mb-1">
+                      <TrendingUp size={12} className="text-indigo-500" />
+                      <span>Trending Topics</span>
+                    </div>
+                    {TRENDING_SEARCH_SUGGESTIONS.map((topic, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => handleSelectSuggestion(topic)}
+                        className="w-full px-3.5 py-1.5 text-left text-sm text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-3 transition-colors cursor-pointer group"
+                      >
+                        <Search size={14} className="text-neutral-400 group-hover:text-indigo-500" />
+                        <span className="truncate">{topic}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -226,16 +387,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           <button
             onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
             aria-label="Open search input"
-            className="sm:hidden p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            className="sm:hidden p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
           >
             <Search size={20} />
           </button>
 
-          {/* Theme Toggle */}
+          {/* Theme Switcher */}
           <button
             onClick={toggleTheme}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-            className="p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            aria-label="Toggle color theme"
+            className="p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
           >
             {theme === 'dark' ? (
               <Sun size={20} className="text-amber-400 hover:rotate-45 transition-transform" />
@@ -279,7 +440,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                         setShowDropdown(false);
                         navigate('/profile');
                       }}
-                      className="w-full px-4 py-2 text-left text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-2.5"
+                      className="w-full px-4 py-2 text-left text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-2.5 cursor-pointer"
                     >
                       <User size={16} />
                       Your profile
@@ -289,7 +450,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                         setShowDropdown(false);
                         navigate('/library');
                       }}
-                      className="w-full px-4 py-2 text-left text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-2.5"
+                      className="w-full px-4 py-2 text-left text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-2.5 cursor-pointer"
                     >
                       <Bookmark size={16} />
                       Your library
@@ -298,20 +459,20 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                       onClick={() => {
                         toggleTheme();
                       }}
-                      className="w-full px-4 py-2 text-left text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-2.5"
+                      className="w-full px-4 py-2 text-left text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-2.5 cursor-pointer"
                     >
                       {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                      Theme: {theme === 'dark' ? 'Dark' : 'Light'}
+                      Appearance: {theme === 'dark' ? 'Dark' : 'Light'}
                     </button>
                   </div>
 
-                  <div className="border-t border-neutral-100 dark:border-neutral-800 pt-1">
+                  <div className="pt-1 border-t border-neutral-100 dark:border-neutral-800">
                     <button
                       onClick={() => {
                         setShowDropdown(false);
                         signOut();
                       }}
-                      className="w-full px-4 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center gap-2.5 font-medium"
+                      className="w-full px-4 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2.5 cursor-pointer"
                     >
                       <LogOut size={16} />
                       Sign out
@@ -321,17 +482,16 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               )}
             </div>
           ) : (
-            /* Sign in with Google Button */
+            /* Sign In Button with Google Logo */
             <button
-              onClick={() => signInWithGoogle('popup')}
-              disabled={isSigningIn || authLoading}
-              aria-label="Sign in with Google"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-neutral-300 dark:border-neutral-700 hover:border-indigo-500 dark:hover:border-indigo-400 font-semibold text-xs sm:text-sm text-neutral-800 dark:text-neutral-100 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all cursor-pointer shadow-2xs disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={() => signInWithGoogle()}
+              disabled={isSigningIn}
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs sm:text-sm font-semibold text-neutral-700 dark:text-neutral-200 transition-colors shadow-2xs cursor-pointer"
             >
               {isSigningIn ? (
-                <Loader2 className="w-4 h-4 animate-spin text-indigo-600 dark:text-indigo-400" />
+                <Loader2 size={16} className="animate-spin text-indigo-500" />
               ) : (
-                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -356,9 +516,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         </div>
       </div>
 
-      {/* Mobile Expanding Search Bar */}
+      {/* Mobile Expanding Search Bar with Suggestions */}
       {mobileSearchOpen && (
-        <div className="sm:hidden px-3 py-2 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 animate-in slide-in-from-top-1">
+        <div ref={mobileSearchContainerRef} className="sm:hidden px-3 py-2 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 animate-in slide-in-from-top-1">
           <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
             <div className="relative flex-1">
               <input
@@ -373,7 +533,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 <button
                   type="button"
                   onClick={() => setQuery('')}
-                  className="absolute right-2 top-2 text-neutral-400"
+                  className="absolute right-2 top-2 text-neutral-400 cursor-pointer"
                 >
                   <X size={16} />
                 </button>
@@ -381,18 +541,59 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             </div>
             <button
               type="submit"
-              className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold"
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold cursor-pointer"
             >
               Search
             </button>
             <button
               type="button"
               onClick={() => setMobileSearchOpen(false)}
-              className="p-1.5 text-neutral-500 dark:text-neutral-400"
+              className="p-1.5 text-neutral-500 dark:text-neutral-400 cursor-pointer"
             >
               Cancel
             </button>
           </form>
+
+          {/* Mobile Suggestions List */}
+          {(liveSuggestions.length > 0 || (query.trim() === '' && recentSearches.length > 0)) && (
+            <div className="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 max-h-60 overflow-y-auto">
+              {query.trim().length > 0 ? (
+                liveSuggestions.slice(0, 7).map((item, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => handleSelectSuggestion(item)}
+                    className="py-2 px-2 text-sm text-neutral-800 dark:text-neutral-200 flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800/50"
+                  >
+                    <div className="flex items-center gap-2.5 truncate">
+                      <Search size={14} className="text-neutral-400 shrink-0" />
+                      <span className="truncate">{item}</span>
+                    </div>
+                    <ArrowUpLeft size={14} className="text-neutral-400 shrink-0" />
+                  </div>
+                ))
+              ) : (
+                recentSearches.slice(0, 5).map((item, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => handleSelectSuggestion(item)}
+                    className="py-2 px-2 text-sm text-neutral-700 dark:text-neutral-300 flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800/50"
+                  >
+                    <div className="flex items-center gap-2.5 truncate">
+                      <Clock size={14} className="text-neutral-400 shrink-0" />
+                      <span className="truncate">{item}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteSearchItem(e, item)}
+                      className="p-1 text-neutral-400"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
     </header>
