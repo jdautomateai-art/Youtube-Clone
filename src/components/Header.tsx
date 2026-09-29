@@ -113,21 +113,35 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
 
   // Click outside to close menus
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setShowDropdown(false);
       }
-      if (
-        searchContainerRef.current &&
-        !searchContainerRef.current.contains(e.target as Node) &&
-        mobileSearchContainerRef.current &&
-        !mobileSearchContainerRef.current.contains(e.target as Node)
-      ) {
+
+      const clickedInsideDesktopSearch = searchContainerRef.current?.contains(target);
+      const clickedInsideMobileSearch = mobileSearchContainerRef.current?.contains(target);
+
+      if (!clickedInsideDesktopSearch && !clickedInsideMobileSearch) {
         setShowSuggestions(false);
       }
     };
+
+    const handleKeyDownGlobal = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowSuggestions(false);
+        setShowDropdown(false);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDownGlobal);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDownGlobal);
+    };
   }, []);
 
   const handleSearchSubmit = (e?: React.FormEvent) => {
