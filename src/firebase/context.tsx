@@ -14,8 +14,8 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { auth, db, googleProvider } from './config';
-import { handleFirestoreError, OperationType } from './errors';
 import { UserProfile } from '../types';
+import { syncGuestDataToUser } from './firestoreService';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 interface AuthContextType {
@@ -105,31 +105,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
+        // Automatically sync any guest likes, subscriptions or history into their user account
+        syncGuestDataToUser(currentUser.uid).catch((e) => console.warn('Guest data sync notice:', e));
+
         const userRef = doc(db, 'users', currentUser.uid);
+        const fallbackProfile: UserProfile = {
+          id: currentUser.uid,
+          displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
+          email: currentUser.email || '',
+          photoURL: currentUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${currentUser.uid}`,
+          bio: '',
+          createdAt: new Date().toISOString(),
+          lastActive: new Date().toISOString(),
+        };
+
         try {
           const userSnap = await getDoc(userRef);
           const now = new Date().toISOString();
           if (userSnap.exists()) {
             const data = userSnap.data() as UserProfile;
             setProfile(data);
-            // Update last active
-            await updateDoc(userRef, { lastActive: now });
+            updateDoc(userRef, { lastActive: now }).catch(() => {});
           } else {
-            const newProfile: UserProfile = {
-              id: currentUser.uid,
-              displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
-              email: currentUser.email || '',
-              photoURL: currentUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${currentUser.uid}`,
-              bio: '',
-              createdAt: now,
-              lastActive: now,
-            };
-            await setDoc(userRef, newProfile);
-            setProfile(newProfile);
+            await setDoc(userRef, fallbackProfile);
+            setProfile(fallbackProfile);
           }
         } catch (err) {
-          console.error('Error fetching/creating profile:', err);
-          handleFirestoreError(err, OperationType.GET, `users/${currentUser.uid}`);
+          console.warn('Notice loading cloud profile, using auth fallback:', err);
+          setProfile(fallbackProfile);
         }
       } else {
         setProfile(null);
@@ -178,7 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       setProfile((prev) => prev ? { ...prev, displayName: displayName.trim().slice(0, 80), bio: bio.trim().slice(0, 500) } : null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      console.warn('Update profile error:', err);
     }
   };
 

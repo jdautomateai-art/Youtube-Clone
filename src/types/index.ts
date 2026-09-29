@@ -69,6 +69,27 @@ export interface WatchHistoryItem {
   watchedAt: string;
 }
 
+export interface ChannelItem {
+  id: string;
+  title: string;
+  description: string;
+  customUrl?: string;
+  thumbnailUrl: string;
+  subscriberCount?: string;
+  videoCount?: string;
+  publishedAt?: string;
+}
+
+export interface YouTubeCommentItem {
+  id: string;
+  authorDisplayName: string;
+  authorProfileImageUrl: string;
+  textDisplay: string;
+  likeCount: number;
+  publishedAt: string;
+  replyCount?: number;
+}
+
 export interface RecentSearchItem {
   id: string;
   query: string;

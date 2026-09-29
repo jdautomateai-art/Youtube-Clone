@@ -1,8 +1,16 @@
-import { VideoItem } from '../types';
+import { VideoItem, ChannelItem, YouTubeCommentItem } from '../types';
 import { INITIAL_VIDEOS, INITIAL_SHORTS } from '../data/mockYouTubeData';
 
 export interface ApiResponse<T> {
   data: T;
+  nextPageToken?: string;
+  isCached?: boolean;
+  apiKeyMissing?: boolean;
+}
+
+export interface SearchResponse {
+  channels?: ChannelItem[];
+  data: VideoItem[];
   nextPageToken?: string;
   isCached?: boolean;
   apiKeyMissing?: boolean;
@@ -123,8 +131,8 @@ export async function fetchTrendingFeed(category: string = 'All', pageToken?: st
   return fetchVideosFeed(category, pageToken);
 }
 
-export async function searchYouTubeVideos(query: string, pageToken?: string): Promise<ApiResponse<VideoItem[]>> {
-  if (!query.trim()) return { data: [] };
+export async function searchYouTube(query: string, pageToken?: string): Promise<SearchResponse> {
+  if (!query.trim()) return { channels: [], data: [] };
   const cacheKey = `search_${query}_${pageToken || 'first'}`;
   const cached = clientCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -135,9 +143,15 @@ export async function searchYouTubeVideos(query: string, pageToken?: string): Pr
     const res = await fetch(`/api/search?q=${encodeURIComponent(query)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
     if (res.ok) {
       const json = await res.json();
-      if (json.data && json.data.length > 0) {
-        clientCache.set(cacheKey, { data: json, timestamp: Date.now() });
-        return json;
+      if (json.data || json.channels) {
+        const result: SearchResponse = {
+          channels: json.channels || [],
+          data: json.data || [],
+          nextPageToken: json.nextPageToken,
+          isCached: json.isCached
+        };
+        clientCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        return result;
       }
     }
   } catch (err) {
@@ -153,13 +167,46 @@ export async function searchYouTubeVideos(query: string, pageToken?: string): Pr
   );
 
   const fallbackData = matched.length > 0 ? matched : INITIAL_VIDEOS;
-  const result: ApiResponse<VideoItem[]> = {
+  const result: SearchResponse = {
+    channels: [],
     data: fallbackData,
     apiKeyMissing: true,
     isCached: true
   };
   clientCache.set(cacheKey, { data: result, timestamp: Date.now() });
   return result;
+}
+
+export async function searchYouTubeVideos(query: string, pageToken?: string): Promise<ApiResponse<VideoItem[]>> {
+  const res = await searchYouTube(query, pageToken);
+  return {
+    data: res.data,
+    nextPageToken: res.nextPageToken,
+    isCached: res.isCached,
+    apiKeyMissing: res.apiKeyMissing
+  };
+}
+
+export async function fetchYouTubeComments(videoId: string): Promise<YouTubeCommentItem[]> {
+  const cacheKey = `comments_${videoId}`;
+  const cached = clientCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const res = await fetch(`/api/comments/${encodeURIComponent(videoId)}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.data && Array.isArray(json.data)) {
+        clientCache.set(cacheKey, { data: json.data, timestamp: Date.now() });
+        return json.data;
+      }
+    }
+  } catch (err) {
+    console.warn('API comments fetch fallback:', err);
+  }
+  return [];
 }
 
 export async function fetchVideoById(videoId: string): Promise<VideoItem | null> {

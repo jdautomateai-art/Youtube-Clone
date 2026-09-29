@@ -1,5 +1,5 @@
 import { INITIAL_VIDEOS, INITIAL_SHORTS } from '../src/data/mockYouTubeData';
-import { VideoItem } from '../src/types';
+import { VideoItem, ChannelItem, YouTubeCommentItem } from '../src/types';
 
 export interface Env {
   YOUTUBE_API_KEY?: string;
@@ -29,6 +29,16 @@ function setMemoryCached(key: string, data: string): void {
   memoryCache.set(key, { data, expiry: Date.now() + CACHE_TTL_MS });
 }
 
+function formatCount(val?: string | number): string {
+  if (!val) return '0';
+  const num = typeof val === 'string' ? parseInt(val.replace(/[^0-9]/g, ''), 10) : val;
+  if (isNaN(num)) return String(val);
+  if (num >= 1_000_000_000) return (num / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (num >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (num >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(num);
+}
+
 // Content filter to remove music and prohibited content
 function isAllowedContent(item: { title?: string; description?: string; categoryId?: string }): boolean {
   if (item.categoryId === '10') return false; // Category 10 is Music in YouTube
@@ -44,17 +54,20 @@ function isAllowedContent(item: { title?: string; description?: string; category
   return true;
 }
 
-// Category search queries
+// Category search queries tuned for Nature 4K & Wildlife
 const CATEGORY_TERMS: Record<string, string> = {
-  Gaming: 'gameplay gaming walkthrough',
-  Tech: 'technology science engineering hardware reviews',
-  News: 'breaking news today world discovery',
-  Education: 'educational documentary science physics history',
-  Sports: 'sports highlights athletics match',
-  Movies: 'animation film cinema cgi 4k',
-  Cooking: 'culinary food cooking masterclass recipe',
-  Travel: 'travel nature documentary 4k landscape wildlife',
-  Comedy: 'comedy sketch animated funny'
+  'Nature 4K': 'nature 4k hdr relaxation documentary scenic',
+  'Wildlife': 'wildlife animals documentary 4k safari predators',
+  'Scenic Landscapes': 'scenic landscapes 4k drone nature peaceful',
+  'Deep Ocean': 'deep ocean marine life coral reef 4k underwater',
+  'Rainforest': 'tropical rainforest jungle amazon wildlife 4k',
+  'African Safari': 'african safari wildlife serengeti savannah 4k',
+  'Mountains & Alps': 'mountains alps aerial 4k peaks dolomites hiking',
+  'Birds of Paradise': 'birds of paradise colorful exotic birds 4k',
+  'Relaxation 4K': 'nature relaxation 4k peaceful scenic water sounds',
+  'Documentary': 'nature documentary planet earth national geographic 4k',
+  'Travel': 'travel nature exploration 4k scenic world',
+  'Tech': 'technology science innovation 4k'
 };
 
 function createJsonResponse(data: any, status = 200, ttlSeconds = 300, isCached = false): Response {
@@ -148,7 +161,8 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
       try {
         let ytUrl = '';
         if (category === 'All') {
-          ytUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&chart=mostPopular&regionCode=US&maxResults=24&key=${apiKey}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+          const queryTerm = 'nature 4k hdr wildlife scenic landscape relaxation';
+          ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=24&q=${encodeURIComponent(queryTerm)}&key=${apiKey}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
         } else {
           const queryTerm = CATEGORY_TERMS[category] || category;
           ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=24&q=${encodeURIComponent(queryTerm)}&key=${apiKey}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
@@ -159,40 +173,24 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
           const json = await ytRes.json() as any;
           let items: VideoItem[] = [];
 
-          if (category === 'All') {
-            items = (json.items || []).map((item: any) => ({
-              id: item.id,
-              title: item.snippet?.title || 'Video',
-              description: item.snippet?.description || '',
-              thumbnailUrl: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url,
-              channelId: item.snippet?.channelId,
-              channelTitle: item.snippet?.channelTitle,
-              publishedAt: item.snippet?.publishedAt,
-              duration: item.contentDetails?.duration,
-              viewCount: item.statistics?.viewCount,
-              likeCount: item.statistics?.likeCount,
-              category: 'All'
-            }));
-          } else {
-            const videoIds = (json.items || []).map((i: any) => i.id?.videoId).filter(Boolean);
-            if (videoIds.length > 0) {
-              const detailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoIds.join(',')}&key=${apiKey}`);
-              if (detailsRes.ok) {
-                const detailsJson = await detailsRes.json() as any;
-                items = (detailsJson.items || []).map((item: any) => ({
-                  id: item.id,
-                  title: item.snippet?.title || 'Video',
-                  description: item.snippet?.description || '',
-                  thumbnailUrl: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url,
-                  channelId: item.snippet?.channelId,
-                  channelTitle: item.snippet?.channelTitle,
-                  publishedAt: item.snippet?.publishedAt,
-                  duration: item.contentDetails?.duration,
-                  viewCount: item.statistics?.viewCount,
-                  likeCount: item.statistics?.likeCount,
-                  category
-                }));
-              }
+          const videoIds = (json.items || []).map((i: any) => i.id?.videoId || i.id).filter(Boolean);
+          if (videoIds.length > 0) {
+            const detailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoIds.join(',')}&key=${apiKey}`);
+            if (detailsRes.ok) {
+              const detailsJson = await detailsRes.json() as any;
+              items = (detailsJson.items || []).map((item: any) => ({
+                id: item.id,
+                title: item.snippet?.title || 'Nature Video',
+                description: item.snippet?.description || '',
+                thumbnailUrl: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url,
+                channelId: item.snippet?.channelId,
+                channelTitle: item.snippet?.channelTitle,
+                publishedAt: item.snippet?.publishedAt,
+                duration: item.contentDetails?.duration,
+                viewCount: item.statistics?.viewCount,
+                likeCount: item.statistics?.likeCount,
+                category: category === 'All' ? 'Nature 4K' : category
+              }));
             }
           }
 
@@ -334,25 +332,60 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
       }, 200, 300);
     }
   }
-  // 4. Search route
+  // 4. Search route (Channels and Videos)
   else if (pathname === '/api/search') {
     const query = url.searchParams.get('q') || '';
     const pageToken = url.searchParams.get('pageToken') || undefined;
 
     if (!query.trim()) {
-      finalResponse = createJsonResponse({ data: [], message: 'No search query provided' }, 200, 60);
+      finalResponse = createJsonResponse({ channels: [], data: [], message: 'No search query provided' }, 200, 60);
     } else if (apiKey) {
       try {
-        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=24&q=${encodeURIComponent(query)}&key=${apiKey}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+        const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video,channel&maxResults=25&q=${encodeURIComponent(query)}&key=${apiKey}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
         const ytRes = await fetch(searchUrl);
         if (ytRes.ok) {
           const json = await ytRes.json() as any;
-          const videoIds = (json.items || []).map((i: any) => i.id?.videoId).filter(Boolean);
+          const channelIds: string[] = [];
+          const videoIds: string[] = [];
+
+          for (const item of (json.items || [])) {
+            if (item.id?.kind === 'youtube#channel' && item.id?.channelId) {
+              channelIds.push(item.id.channelId);
+            } else if (item.id?.kind === 'youtube#video' && item.id?.videoId) {
+              videoIds.push(item.id.videoId);
+            }
+          }
+
+          // Fetch rich channel details if any channels matched
+          let channels: ChannelItem[] = [];
+          if (channelIds.length > 0) {
+            try {
+              const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelIds.join(',')}&key=${apiKey}`);
+              if (chRes.ok) {
+                const chJson = await chRes.json() as any;
+                channels = (chJson.items || []).map((ch: any) => ({
+                  id: ch.id,
+                  title: ch.snippet?.title || 'YouTube Channel',
+                  description: ch.snippet?.description || '',
+                  customUrl: ch.snippet?.customUrl || '',
+                  thumbnailUrl: ch.snippet?.thumbnails?.high?.url || ch.snippet?.thumbnails?.medium?.url || ch.snippet?.thumbnails?.default?.url,
+                  subscriberCount: formatCount(ch.statistics?.subscriberCount),
+                  videoCount: formatCount(ch.statistics?.videoCount),
+                  publishedAt: ch.snippet?.publishedAt
+                }));
+              }
+            } catch (e) {
+              console.warn('Channel fetch failed:', e);
+            }
+          }
+
+          // Fetch video details
+          let items: VideoItem[] = [];
           if (videoIds.length > 0) {
             const detailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoIds.join(',')}&key=${apiKey}`);
             if (detailsRes.ok) {
               const detailsJson = await detailsRes.json() as any;
-              const items = (detailsJson.items || []).map((item: any) => ({
+              items = (detailsJson.items || []).map((item: any) => ({
                 id: item.id,
                 title: item.snippet?.title || 'Video',
                 description: item.snippet?.description || '',
@@ -364,19 +397,16 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
                 viewCount: item.statistics?.viewCount,
                 likeCount: item.statistics?.likeCount
               }));
-
-              const allowed = items.filter(isAllowedContent);
-              finalResponse = createJsonResponse({
-                data: allowed.length > 0 ? allowed : items,
-                nextPageToken: json.nextPageToken,
-                isCached: false
-              }, 200, 300);
-            } else {
-              finalResponse = createJsonResponse({ data: INITIAL_VIDEOS, isCached: true }, 200, 180);
             }
-          } else {
-            finalResponse = createJsonResponse({ data: [], message: 'No videos found.' }, 200, 180);
           }
+
+          const allowed = items.filter(isAllowedContent);
+          finalResponse = createJsonResponse({
+            channels,
+            data: allowed.length > 0 ? allowed : items,
+            nextPageToken: json.nextPageToken,
+            isCached: false
+          }, 200, 300);
         } else {
           const qLower = query.toLowerCase();
           const matched = INITIAL_VIDEOS.filter(
@@ -385,6 +415,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
                    v.channelTitle.toLowerCase().includes(qLower)
           );
           finalResponse = createJsonResponse({
+            channels: [],
             data: matched.length > 0 ? matched : INITIAL_VIDEOS,
             isCached: true
           }, 200, 180);
@@ -396,6 +427,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
                  v.description.toLowerCase().includes(qLower)
         );
         finalResponse = createJsonResponse({
+          channels: [],
           data: matched.length > 0 ? matched : INITIAL_VIDEOS,
           isCached: true
         }, 200, 180);
@@ -408,10 +440,45 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
                v.channelTitle.toLowerCase().includes(qLower)
       );
       finalResponse = createJsonResponse({
+        channels: [],
         data: matched.length > 0 ? matched : INITIAL_VIDEOS,
         apiKeyMissing: true,
         isCached: true
       }, 200, 300);
+    }
+  }
+  // 5. Original YouTube Comments route
+  else if (pathname.startsWith('/api/comments/')) {
+    const videoId = pathname.replace('/api/comments/', '').trim();
+    if (!videoId) {
+      finalResponse = createJsonResponse({ error: 'BAD_REQUEST', message: 'Missing video ID' }, 400);
+    } else if (apiKey) {
+      try {
+        const commentsUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${encodeURIComponent(videoId)}&maxResults=30&order=relevance&key=${apiKey}`;
+        const ytRes = await fetch(commentsUrl);
+        if (ytRes.ok) {
+          const json = await ytRes.json() as any;
+          const comments: YouTubeCommentItem[] = (json.items || []).map((item: any) => {
+            const top = item.snippet?.topLevelComment?.snippet;
+            return {
+              id: item.id,
+              authorDisplayName: top?.authorDisplayName || 'YouTube User',
+              authorProfileImageUrl: top?.authorProfileImageUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${item.id}`,
+              textDisplay: top?.textDisplay || top?.textOriginal || '',
+              likeCount: Number(top?.likeCount || 0),
+              publishedAt: top?.publishedAt || new Date().toISOString(),
+              replyCount: Number(item.snippet?.totalReplyCount || 0)
+            };
+          });
+          finalResponse = createJsonResponse({ data: comments, isCached: false }, 200, 300);
+        } else {
+          finalResponse = createJsonResponse({ data: [], commentsDisabled: true }, 200, 300);
+        }
+      } catch (err) {
+        finalResponse = createJsonResponse({ data: [] }, 200, 180);
+      }
+    } else {
+      finalResponse = createJsonResponse({ data: [] }, 200, 300);
     }
   }
   // 5. Shorts route
@@ -479,6 +546,18 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
           const json = await ytRes.json() as any;
           const item = json.items?.[0];
           if (item) {
+            let avatarUrl = `https://api.dicebear.com/7.x/identicon/svg?seed=${item.snippet?.channelId || item.id}`;
+            if (item.snippet?.channelId) {
+              try {
+                const chRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${item.snippet.channelId}&key=${apiKey}`);
+                if (chRes.ok) {
+                  const chJson = await chRes.json() as any;
+                  const thumb = chJson.items?.[0]?.snippet?.thumbnails;
+                  avatarUrl = thumb?.default?.url || thumb?.medium?.url || avatarUrl;
+                }
+              } catch (e) {}
+            }
+
             const video: VideoItem = {
               id: item.id,
               title: item.snippet?.title || 'Video',
@@ -486,6 +565,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
               thumbnailUrl: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url,
               channelId: item.snippet?.channelId,
               channelTitle: item.snippet?.channelTitle,
+              channelAvatarUrl: avatarUrl,
               publishedAt: item.snippet?.publishedAt,
               duration: item.contentDetails?.duration,
               viewCount: item.statistics?.viewCount,
