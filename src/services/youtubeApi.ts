@@ -187,26 +187,41 @@ export async function searchYouTubeVideos(query: string, pageToken?: string): Pr
   };
 }
 
-export async function fetchYouTubeComments(videoId: string): Promise<YouTubeCommentItem[]> {
-  const cacheKey = `comments_${videoId}`;
+export interface CommentsResponse {
+  data: YouTubeCommentItem[];
+  nextPageToken?: string;
+  totalResults?: number;
+}
+
+export async function fetchYouTubeComments(
+  videoId: string,
+  pageToken?: string,
+  order: 'relevance' | 'time' = 'relevance'
+): Promise<CommentsResponse> {
+  const cacheKey = `comments_${videoId}_${order}_${pageToken || 'p1'}`;
   const cached = clientCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return cached.data;
   }
 
   try {
-    const res = await fetch(`/api/comments/${encodeURIComponent(videoId)}`);
+    const res = await fetch(`/api/comments/${encodeURIComponent(videoId)}?order=${order}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
     if (res.ok) {
       const json = await res.json();
       if (json.data && Array.isArray(json.data)) {
-        clientCache.set(cacheKey, { data: json.data, timestamp: Date.now() });
-        return json.data;
+        const result: CommentsResponse = {
+          data: json.data,
+          nextPageToken: json.nextPageToken,
+          totalResults: json.totalResults
+        };
+        clientCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        return result;
       }
     }
   } catch (err) {
     console.warn('API comments fetch fallback:', err);
   }
-  return [];
+  return { data: [] };
 }
 
 export async function fetchChannelDetails(

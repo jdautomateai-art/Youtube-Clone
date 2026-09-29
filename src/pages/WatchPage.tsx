@@ -11,7 +11,9 @@ import {
   ExternalLink,
   Send,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  Loader2,
+  ArrowUpDown
 } from 'lucide-react';
 import { VideoItem, CommentItem, YouTubeCommentItem } from '../types';
 import {
@@ -104,6 +106,9 @@ export const WatchPage: React.FC = () => {
   // Comments state
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [ytComments, setYtComments] = useState<YouTubeCommentItem[]>([]);
+  const [ytNextPageToken, setYtNextPageToken] = useState<string | undefined>(undefined);
+  const [ytCommentSort, setYtCommentSort] = useState<'relevance' | 'time'>('relevance');
+  const [loadingMoreYt, setLoadingMoreYt] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentSuccess, setCommentSuccess] = useState(false);
@@ -119,15 +124,16 @@ export const WatchPage: React.FC = () => {
     async function loadData() {
       setLoading(true);
       try {
-        const [v, rel, originalComments] = await Promise.all([
+        const [v, rel, originalCommentsRes] = await Promise.all([
           fetchVideoById(videoId),
           fetchRelatedVideos(videoId),
-          fetchYouTubeComments(videoId)
+          fetchYouTubeComments(videoId, undefined, ytCommentSort)
         ]);
         if (isMounted) {
           setVideo(v);
           setRelated(rel);
-          setYtComments(originalComments);
+          setYtComments(originalCommentsRes.data || []);
+          setYtNextPageToken(originalCommentsRes.nextPageToken);
 
           // Add to watch history
           if (v) {
@@ -143,6 +149,36 @@ export const WatchPage: React.FC = () => {
     loadData();
     return () => { isMounted = false; };
   }, [videoId, user]);
+
+  const handleSortYtComments = async (sort: 'relevance' | 'time') => {
+    if (sort === ytCommentSort) return;
+    setYtCommentSort(sort);
+    try {
+      const res = await fetchYouTubeComments(videoId, undefined, sort);
+      setYtComments(res.data || []);
+      setYtNextPageToken(res.nextPageToken);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleLoadMoreYtComments = async () => {
+    if (!ytNextPageToken || loadingMoreYt) return;
+    setLoadingMoreYt(true);
+    try {
+      const res = await fetchYouTubeComments(videoId, ytNextPageToken, ytCommentSort);
+      setYtComments((prev) => {
+        const existingIds = new Set(prev.map((c) => c.id));
+        const newOnes = (res.data || []).filter((c) => !existingIds.has(c.id));
+        return [...prev, ...newOnes];
+      });
+      setYtNextPageToken(res.nextPageToken);
+    } catch (err) {
+      console.error('Load more comments error:', err);
+    } finally {
+      setLoadingMoreYt(false);
+    }
+  };
 
   // Check initial user states for like, save, subscription
   useEffect(() => {
@@ -739,9 +775,36 @@ export const WatchPage: React.FC = () => {
             {/* Original YouTube Comments */}
             {(commentTab === 'all' || commentTab === 'youtube') && ytComments.length > 0 && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-neutral-500 mb-3">
-                  <span>Original YouTube Comments ({ytComments.length})</span>
-                  <span className="text-3xs font-normal lowercase text-neutral-400">synced from YouTube</span>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold uppercase tracking-wider text-neutral-500 mb-3 pt-2">
+                  <div className="flex items-center gap-2">
+                    <span>Original YouTube Comments ({ytComments.length})</span>
+                    <span className="text-3xs font-normal lowercase text-neutral-400">synced from YouTube</span>
+                  </div>
+
+                  {/* Comments sorting */}
+                  <div className="flex items-center gap-1.5 normal-case">
+                    <button
+                      onClick={() => handleSortYtComments('relevance')}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                        ytCommentSort === 'relevance'
+                          ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900'
+                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                      }`}
+                    >
+                      <ArrowUpDown size={11} />
+                      <span>Top comments</span>
+                    </button>
+                    <button
+                      onClick={() => handleSortYtComments('time')}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                        ytCommentSort === 'time'
+                          ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900'
+                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                      }`}
+                    >
+                      <span>Newest</span>
+                    </button>
+                  </div>
                 </div>
 
                 {ytComments.map((ytc) => (
@@ -782,6 +845,26 @@ export const WatchPage: React.FC = () => {
                     </div>
                   </div>
                 ))}
+
+                {/* Load More Comments Button */}
+                {ytNextPageToken && (
+                  <div className="flex justify-center pt-4 pb-2">
+                    <button
+                      onClick={handleLoadMoreYtComments}
+                      disabled={loadingMoreYt}
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-900 dark:text-neutral-100 text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-50 hover:scale-102"
+                    >
+                      {loadingMoreYt ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin text-indigo-500" />
+                          <span>Loading more comments...</span>
+                        </>
+                      ) : (
+                        <span>Load More Comments ({ytComments.length} loaded)</span>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

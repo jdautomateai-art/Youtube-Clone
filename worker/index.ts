@@ -450,11 +450,14 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
   // 5. Original YouTube Comments route
   else if (pathname.startsWith('/api/comments/')) {
     const videoId = pathname.replace('/api/comments/', '').trim();
+    const pageToken = url.searchParams.get('pageToken') || undefined;
+    const order = url.searchParams.get('order') || 'relevance'; // 'relevance' | 'time'
+
     if (!videoId) {
       finalResponse = createJsonResponse({ error: 'BAD_REQUEST', message: 'Missing video ID' }, 400);
     } else if (apiKey) {
       try {
-        const commentsUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${encodeURIComponent(videoId)}&maxResults=30&order=relevance&key=${apiKey}`;
+        const commentsUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${encodeURIComponent(videoId)}&maxResults=100&order=${order === 'time' ? 'time' : 'relevance'}&key=${apiKey}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
         const ytRes = await fetch(commentsUrl);
         if (ytRes.ok) {
           const json = await ytRes.json() as any;
@@ -470,7 +473,12 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
               replyCount: Number(item.snippet?.totalReplyCount || 0)
             };
           });
-          finalResponse = createJsonResponse({ data: comments, isCached: false }, 200, 300);
+          finalResponse = createJsonResponse({
+            data: comments,
+            nextPageToken: json.nextPageToken,
+            totalResults: json.pageInfo?.totalResults,
+            isCached: false
+          }, 200, 300);
         } else {
           finalResponse = createJsonResponse({ data: [], commentsDisabled: true }, 200, 300);
         }
