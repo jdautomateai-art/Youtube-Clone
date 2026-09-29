@@ -8,7 +8,7 @@ import { SkeletonGrid } from '../components/SkeletonGrid';
 import { Search, RotateCw, Tv, Film } from 'lucide-react';
 
 export const SearchPage: React.FC = () => {
-  const { route, openSearch } = useNavigation();
+  const { route, openSearch, openChannel } = useNavigation();
   const query = route.searchQuery || '';
 
   const [channels, setChannels] = useState<ChannelItem[]>([]);
@@ -143,7 +143,7 @@ export const SearchPage: React.FC = () => {
                   <ChannelCard
                     key={channel.id}
                     channel={channel}
-                    onSelectChannel={(ch) => openSearch(ch.title)}
+                    onSelectChannel={(ch) => openChannel(ch.id)}
                   />
                 ))}
               </div>

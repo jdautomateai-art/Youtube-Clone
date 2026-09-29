@@ -6,12 +6,14 @@ export interface RouteState {
   searchQuery: string;
   category: string;
   videoId?: string;
+  channelId?: string;
 }
 
 interface NavigationContextType {
   route: RouteState;
   navigate: (url: string) => void;
   openVideo: (videoId: string) => void;
+  openChannel: (channelId: string) => void;
   openSearch: (query: string) => void;
   openCategory: (cat: string) => void;
 }
@@ -32,12 +34,20 @@ function parseCurrentRoute(): RouteState {
     videoId = vParam;
   }
 
+  let channelId: string | undefined = undefined;
+  if (pathname.startsWith('/channel/')) {
+    channelId = decodeURIComponent(pathname.replace('/channel/', '').split('/')[0].split('?')[0]);
+  } else if (pathname === '/channel' && searchParams.get('id')) {
+    channelId = searchParams.get('id') || undefined;
+  }
+
   return {
     path: pathname || '/',
     params: {},
     searchQuery: q,
     category,
-    videoId: videoId || undefined
+    videoId: videoId || undefined,
+    channelId: channelId || undefined
   };
 }
 
@@ -68,6 +78,10 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     navigate(`/watch/${videoId}`);
   }, [navigate]);
 
+  const openChannel = useCallback((channelId: string) => {
+    navigate(`/channel/${encodeURIComponent(channelId)}`);
+  }, [navigate]);
+
   const openSearch = useCallback((query: string) => {
     navigate(`/search?q=${encodeURIComponent(query)}`);
   }, [navigate]);
@@ -81,7 +95,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [navigate]);
 
   return (
-    <NavigationContext.Provider value={{ route, navigate, openVideo, openSearch, openCategory }}>
+    <NavigationContext.Provider value={{ route, navigate, openVideo, openChannel, openSearch, openCategory }}>
       {children}
     </NavigationContext.Provider>
   );

@@ -85,7 +85,7 @@ function FormattedText({ text }: { text: string }) {
 }
 
 export const WatchPage: React.FC = () => {
-  const { route, openVideo } = useNavigation();
+  const { route, openVideo, openChannel } = useNavigation();
   const videoId = route.videoId || 'LXb3EKWsInQ';
 
   const { user, profile, triggerSignInPrompt } = useAuth();
@@ -106,6 +106,7 @@ export const WatchPage: React.FC = () => {
   const [ytComments, setYtComments] = useState<YouTubeCommentItem[]>([]);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [commentSuccess, setCommentSuccess] = useState(false);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -217,26 +218,39 @@ export const WatchPage: React.FC = () => {
     e.preventDefault();
     if (!commentText.trim()) return;
 
-    if (!user) {
-      triggerSignInPrompt('Sign in to leave a comment on this video.');
-      return;
-    }
-
     setSubmittingComment(true);
     try {
+      let authorUid = user?.uid;
+      let authorName = profile?.displayName || user?.displayName || 'User';
+      let authorPhoto = profile?.photoURL || user?.photoURL;
+
+      if (!user) {
+        let guestId = localStorage.getItem('streamhub_guest_id');
+        if (!guestId) {
+          guestId = 'guest_' + Math.random().toString(36).substring(2, 9);
+          localStorage.setItem('streamhub_guest_id', guestId);
+        }
+        authorUid = guestId;
+        authorName = 'Guest Viewer';
+        authorPhoto = `https://api.dicebear.com/7.x/bottts/svg?seed=${guestId}`;
+      }
+
       const added = await addVideoComment(
         videoId,
         {
-          uid: user.uid,
-          displayName: profile?.displayName || user.displayName || 'User',
-          photoURL: profile?.photoURL || user.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${user.uid}`
+          uid: authorUid || 'guest_user',
+          displayName: authorName,
+          photoURL: authorPhoto || `https://api.dicebear.com/7.x/identicon/svg?seed=${authorUid}`
         },
         commentText
       );
-      setComments((prev) => [added, ...prev]);
+      setComments((prev) => [added, ...prev.filter((c) => c.id !== added.id)]);
       setCommentText('');
+      setCommentSuccess(true);
+      setTimeout(() => setCommentSuccess(false), 3500);
+      setCommentTab('all');
     } catch (err) {
-      console.error(err);
+      console.error('Comment error:', err);
     } finally {
       setSubmittingComment(false);
     }
@@ -244,23 +258,38 @@ export const WatchPage: React.FC = () => {
 
   // Handle Reply Submission
   const handlePostReply = async (parentId: string) => {
-    if (!replyText.trim() || !user) return;
+    if (!replyText.trim()) return;
     try {
+      let authorUid = user?.uid;
+      let authorName = profile?.displayName || user?.displayName || 'User';
+      let authorPhoto = profile?.photoURL || user?.photoURL;
+
+      if (!user) {
+        let guestId = localStorage.getItem('streamhub_guest_id');
+        if (!guestId) {
+          guestId = 'guest_' + Math.random().toString(36).substring(2, 9);
+          localStorage.setItem('streamhub_guest_id', guestId);
+        }
+        authorUid = guestId;
+        authorName = 'Guest Viewer';
+        authorPhoto = `https://api.dicebear.com/7.x/bottts/svg?seed=${guestId}`;
+      }
+
       const added = await addVideoComment(
         videoId,
         {
-          uid: user.uid,
-          displayName: profile?.displayName || user.displayName || 'User',
-          photoURL: profile?.photoURL || user.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${user.uid}`
+          uid: authorUid || 'guest_user',
+          displayName: authorName,
+          photoURL: authorPhoto || `https://api.dicebear.com/7.x/identicon/svg?seed=${authorUid}`
         },
         replyText,
         parentId
       );
-      setComments((prev) => [...prev, added]);
+      setComments((prev) => [...prev.filter((c) => c.id !== added.id), added]);
       setReplyText('');
       setReplyingToId(null);
     } catch (err) {
-      console.error(err);
+      console.error('Reply error:', err);
     }
   };
 
@@ -354,16 +383,20 @@ export const WatchPage: React.FC = () => {
               <img
                 src={video.channelAvatarUrl || `https://api.dicebear.com/7.x/identicon/svg?seed=${video.channelId || video.channelTitle}`}
                 alt={video.channelTitle}
-                className="w-10 h-10 rounded-full object-cover bg-neutral-200 dark:bg-neutral-800 ring-2 ring-neutral-200 dark:ring-neutral-700"
+                onClick={() => { if (video.channelId) openChannel(video.channelId); }}
+                className="w-10 h-10 rounded-full object-cover bg-neutral-200 dark:bg-neutral-800 ring-2 ring-neutral-200 dark:ring-neutral-700 hover:ring-indigo-500 transition-all cursor-pointer"
               />
-              <div>
+              <div
+                onClick={() => { if (video.channelId) openChannel(video.channelId); }}
+                className="cursor-pointer group"
+              >
                 <div className="flex items-center gap-1.5">
-                  <p className="font-bold text-neutral-900 dark:text-neutral-100 text-sm sm:text-base leading-tight">
+                  <p className="font-bold text-neutral-900 dark:text-neutral-100 text-sm sm:text-base leading-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                     {video.channelTitle}
                   </p>
                   <CheckCircle2 size={15} className="text-neutral-500 fill-neutral-300 dark:fill-neutral-700 dark:text-neutral-400" />
                 </div>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">Official YouTube Creator</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 group-hover:underline">Visit Channel</p>
               </div>
 
               <button
@@ -516,13 +549,18 @@ export const WatchPage: React.FC = () => {
                         Sign in
                       </button>
                     )}
+                    {commentSuccess && (
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1 animate-in fade-in">
+                        <Check size={14} /> Comment posted!
+                      </span>
+                    )}
                     <button
                       type="submit"
                       disabled={!commentText.trim() || submittingComment}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold transition-all cursor-pointer shadow-xs"
                     >
                       <Send size={14} />
-                      Comment
+                      {submittingComment ? 'Posting...' : 'Comment'}
                     </button>
                   </div>
                 </div>

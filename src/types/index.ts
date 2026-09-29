@@ -75,8 +75,10 @@ export interface ChannelItem {
   description: string;
   customUrl?: string;
   thumbnailUrl: string;
+  bannerUrl?: string;
   subscriberCount?: string;
   videoCount?: string;
+  viewCount?: string;
   publishedAt?: string;
 }
 

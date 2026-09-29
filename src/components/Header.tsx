@@ -17,7 +17,12 @@ import { OpenInNewTabButton } from './OpenInNewTabButton';
 import { useAuth } from '../firebase/context';
 import { useTheme } from '../context/ThemeContext';
 import { useNavigation } from '../context/NavigationContext';
-import { getRecentSearches, saveRecentSearch } from '../firebase/firestoreService';
+import {
+  getRecentSearches,
+  saveRecentSearch,
+  deleteRecentSearch,
+  clearRecentSearches
+} from '../firebase/firestoreService';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -99,6 +104,18 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     openSearch(clean);
   };
 
+  const handleDeleteSearchItem = async (e: React.MouseEvent, item: string) => {
+    e.stopPropagation();
+    const updated = await deleteRecentSearch(user?.uid || '', item);
+    setRecentSearches(updated);
+  };
+
+  const handleClearAllSearches = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    await clearRecentSearches(user?.uid || '');
+    setRecentSearches([]);
+  };
+
   const handleSelectSuggestion = (text: string) => {
     setQuery(text);
     setShowSuggestions(false);
@@ -166,19 +183,35 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
           {/* Suggestions Dropdown */}
           {showSuggestions && recentSearches.length > 0 && (
             <div className="absolute top-11 left-0 w-[calc(100%-54px)] bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800 py-2 z-50 overflow-hidden">
-              <div className="px-3 py-1 text-2xs font-semibold uppercase tracking-wider text-neutral-400">
-                Recent Searches
+              <div className="flex items-center justify-between px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider text-neutral-400 border-b border-neutral-100 dark:border-neutral-800">
+                <span>Recent Searches</span>
+                <button
+                  type="button"
+                  onClick={handleClearAllSearches}
+                  className="text-indigo-600 dark:text-indigo-400 hover:underline normal-case font-medium text-xs cursor-pointer"
+                >
+                  Clear all
+                </button>
               </div>
               {recentSearches.map((item, idx) => (
-                <button
+                <div
                   key={idx}
-                  type="button"
                   onClick={() => handleSelectSuggestion(item)}
-                  className="w-full px-3 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-2.5 transition-colors"
+                  className="w-full px-3 py-2 text-left text-sm text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center justify-between gap-2.5 transition-colors group cursor-pointer"
                 >
-                  <Clock size={14} className="text-neutral-400 shrink-0" />
-                  <span className="truncate">{item}</span>
-                </button>
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <Clock size={14} className="text-neutral-400 shrink-0" />
+                    <span className="truncate">{item}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteSearchItem(e, item)}
+                    title="Remove from search history"
+                    className="p-1 rounded-md text-neutral-400 hover:text-red-500 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors opacity-60 group-hover:opacity-100 cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               ))}
             </div>
           )}

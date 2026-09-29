@@ -209,6 +209,44 @@ export async function fetchYouTubeComments(videoId: string): Promise<YouTubeComm
   return [];
 }
 
+export async function fetchChannelDetails(
+  channelId: string
+): Promise<{ channel: ChannelItem; videos: VideoItem[] }> {
+  const cacheKey = `channel_${channelId}`;
+  const cached = clientCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const res = await fetch(`/api/channel/${encodeURIComponent(channelId)}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json.channel) {
+        const result = { channel: json.channel, videos: json.data || [] };
+        clientCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        return result;
+      }
+    }
+  } catch (err) {
+    console.warn('API channel fetch fallback:', err);
+  }
+
+  // Fallback
+  const fallbackChannel: ChannelItem = {
+    id: channelId,
+    title: channelId.replace(/^channel_/, '').replace(/_/g, ' '),
+    description: 'Explore nature, scientific discoveries, wildlife, and documentary content on StreamHub.',
+    thumbnailUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${channelId}`,
+    subscriberCount: '1.2M',
+    videoCount: '95',
+    viewCount: '240M'
+  };
+  const result = { channel: fallbackChannel, videos: INITIAL_VIDEOS };
+  clientCache.set(cacheKey, { data: result, timestamp: Date.now() });
+  return result;
+}
+
 export async function fetchVideoById(videoId: string): Promise<VideoItem | null> {
   const cacheKey = `video_${videoId}`;
   const cached = clientCache.get(cacheKey);

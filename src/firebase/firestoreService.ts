@@ -419,24 +419,63 @@ export async function saveRecentSearch(userId: string, queryText: string): Promi
   }
 }
 
-export async function getRecentSearches(userId: string): Promise<string[]> {
+export async function deleteRecentSearch(userId: string, queryText: string): Promise<string[]> {
+  const clean = queryText.trim();
   const key = `streamhub_${userId || 'guest'}_searches`;
-  const local = getLocal<string>(key);
-  if (local.length > 0) return local;
+  const existing = getLocal<string>(key);
+  const updated = existing.filter((q) => q.toLowerCase() !== clean.toLowerCase());
+  setLocal(key, updated);
+
+  if (userId && userId !== 'guest') {
+    const searchId = clean.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 40);
+    try {
+      if (searchId) {
+        await deleteDoc(doc(db, 'users', userId, 'searches', searchId));
+      }
+    } catch (err) {
+      console.warn('Failed to delete cloud search:', err);
+    }
+  }
+
+  return updated;
+}
+
+export async function clearRecentSearches(userId: string): Promise<void> {
+  const key = `streamhub_${userId || 'guest'}_searches`;
+  setLocal(key, []);
 
   if (userId && userId !== 'guest') {
     try {
-      const snap = await getDocs(query(collection(db, 'users', userId, 'searches'), limit(15)));
-      const list = snap.docs.map((d) => d.data() as { query: string; searchedAt: string });
-      list.sort((a, b) => new Date(b.searchedAt).getTime() - new Date(a.searchedAt).getTime());
-      const res = list.map((item) => item.query);
-      if (res.length > 0) setLocal(key, res);
-      return res;
-    } catch {
-      return [];
+      const snap = await getDocs(collection(db, 'users', userId, 'searches'));
+      const deletions = snap.docs.map((d) => deleteDoc(d.ref));
+      await Promise.all(deletions);
+    } catch (err) {
+      console.warn('Failed to clear cloud searches:', err);
     }
   }
-  return [];
+}
+
+export async function getRecentSearches(userId: string): Promise<string[]> {
+  const key = `streamhub_${userId || 'guest'}_searches`;
+  const local = getLocal<string>(key);
+
+  if (userId && userId !== 'guest') {
+    try {
+      const snap = await getDocs(query(collection(db, 'users', userId, 'searches'), limit(25)));
+      const list = snap.docs.map((d) => d.data() as { query: string; searchedAt: string });
+      list.sort((a, b) => new Date(b.searchedAt).getTime() - new Date(a.searchedAt).getTime());
+      const cloudSearches = list.map((item) => item.query);
+      if (cloudSearches.length > 0) {
+        // Merge without duplicates
+        const combined = Array.from(new Set([...cloudSearches, ...local])).slice(0, 20);
+        setLocal(key, combined);
+        return combined;
+      }
+    } catch {
+      return local;
+    }
+  }
+  return local;
 }
 
 // ================= GUEST TO USER SYNC =================
@@ -479,32 +518,56 @@ export async function syncGuestDataToUser(userId: string): Promise<void> {
       }
       setLocal('streamhub_guest_history', []);
     }
+
+    // 5. Migrate Searches
+    const guestSearches = getLocal<string>('streamhub_guest_searches');
+    if (guestSearches.length > 0) {
+      for (const queryStr of guestSearches) {
+        await saveRecentSearch(userId, queryStr);
+      }
+    }
   } catch (err) {
     console.warn('Sync guest data error:', err);
   }
 }
 
 // ================= COMMENTS & REPLIES =================
+const keyComments = (videoId: string) => `streamhub_comments_${videoId}`;
+
 export function subscribeToVideoComments(
   videoId: string,
   callback: (comments: CommentItem[]) => void
 ) {
+  // Deliver immediate local comments for instant UI feedback
+  const localList = getLocal<CommentItem>(keyComments(videoId));
+  callback(localList);
+
   try {
     const q = query(collection(db, 'videos', videoId, 'comments'));
     return onSnapshot(
       q,
       (snap) => {
-        const items = snap.docs.map((d) => d.data() as CommentItem);
-        items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        callback(items);
+        const cloudItems = snap.docs.map((d) => d.data() as CommentItem);
+        // Merge cloud items with local items
+        const commentMap = new Map<string, CommentItem>();
+        for (const item of localList) {
+          commentMap.set(item.id, item);
+        }
+        for (const item of cloudItems) {
+          commentMap.set(item.id, item);
+        }
+        const merged = Array.from(commentMap.values());
+        merged.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setLocal(keyComments(videoId), merged);
+        callback(merged);
       },
       (err) => {
-        console.warn('Firestore video comments notice:', err);
-        callback([]);
+        console.warn('Firestore video comments live listener notice (using local storage):', err);
+        callback(getLocal<CommentItem>(keyComments(videoId)));
       }
     );
   } catch {
-    callback([]);
+    callback(getLocal<CommentItem>(keyComments(videoId)));
     return () => {};
   }
 }
@@ -530,13 +593,20 @@ export async function addVideoComment(
     ...(parentId ? { parentId } : {})
   };
 
-  try {
-    await setDoc(doc(db, 'videos', videoId, 'comments', commentId), newComment);
-    return newComment;
-  } catch (err) {
-    console.warn('Failed to add cloud comment:', err);
-    return newComment;
+  // Immediate save to local storage cache so it persists on this device
+  const localList = getLocal<CommentItem>(keyComments(videoId));
+  setLocal(keyComments(videoId), [newComment, ...localList.filter((c) => c.id !== commentId)]);
+
+  // If authenticated user, also write to cloud Firestore
+  if (user.uid && user.uid !== 'guest' && !user.uid.startsWith('guest_')) {
+    try {
+      await setDoc(doc(db, 'videos', videoId, 'comments', commentId), newComment);
+    } catch (err) {
+      console.warn('Failed to add cloud comment (saved locally):', err);
+    }
   }
+
+  return newComment;
 }
 
 export async function updateVideoComment(
@@ -545,6 +615,13 @@ export async function updateVideoComment(
   _authorUid: string,
   newText: string
 ): Promise<void> {
+  // Update local storage
+  const localList = getLocal<CommentItem>(keyComments(videoId));
+  const updated = localList.map((c) =>
+    c.id === commentId ? { ...c, text: newText.trim().slice(0, 1000), updatedAt: new Date().toISOString(), edited: true } : c
+  );
+  setLocal(keyComments(videoId), updated);
+
   try {
     const commentRef = doc(db, 'videos', videoId, 'comments', commentId);
     await updateDoc(commentRef, {
@@ -553,7 +630,7 @@ export async function updateVideoComment(
       edited: true
     });
   } catch (err) {
-    console.warn('Failed to update comment:', err);
+    console.warn('Failed to update cloud comment:', err);
   }
 }
 
@@ -561,9 +638,14 @@ export async function deleteVideoComment(
   videoId: string,
   commentId: string
 ): Promise<void> {
+  // Remove from local storage
+  const localList = getLocal<CommentItem>(keyComments(videoId));
+  const filtered = localList.filter((c) => c.id !== commentId && c.parentId !== commentId);
+  setLocal(keyComments(videoId), filtered);
+
   try {
     await deleteDoc(doc(db, 'videos', videoId, 'comments', commentId));
   } catch (err) {
-    console.warn('Failed to delete comment:', err);
+    console.warn('Failed to delete cloud comment:', err);
   }
 }

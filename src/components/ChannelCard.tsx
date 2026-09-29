@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChannelItem } from '../types';
 import { useAuth } from '../firebase/context';
+import { useNavigation } from '../context/NavigationContext';
 import { toggleSubscribeChannel, checkIsChannelSubscribed } from '../firebase/firestoreService';
 import { Check, Bell, CheckCircle2 } from 'lucide-react';
 
@@ -11,6 +12,7 @@ interface ChannelCardProps {
 
 export const ChannelCard: React.FC<ChannelCardProps> = ({ channel, onSelectChannel }) => {
   const { user, triggerSignInPrompt } = useAuth();
+  const { openChannel } = useNavigation();
   const [subscribed, setSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -44,9 +46,17 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({ channel, onSelectChann
     }
   };
 
+  const handleClick = () => {
+    if (onSelectChannel) {
+      onSelectChannel(channel);
+    } else {
+      openChannel(channel.id);
+    }
+  };
+
   return (
     <div
-      onClick={() => onSelectChannel?.(channel)}
+      onClick={handleClick}
       className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 p-4 sm:p-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700/60 hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all cursor-pointer mb-6"
     >
       <div className="w-20 h-20 sm:w-28 sm:h-28 rounded-full overflow-hidden flex-shrink-0 bg-neutral-200 dark:bg-neutral-700 shadow-md">

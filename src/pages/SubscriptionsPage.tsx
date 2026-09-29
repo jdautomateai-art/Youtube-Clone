@@ -9,7 +9,7 @@ import { useNavigation } from '../context/NavigationContext';
 
 export const SubscriptionsPage: React.FC = () => {
   const { user, triggerSignInPrompt } = useAuth();
-  const { openSearch } = useNavigation();
+  const { openSearch, openChannel } = useNavigation();
   const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([]);
   const [feedVideos, setFeedVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +101,7 @@ export const SubscriptionsPage: React.FC = () => {
             {subscriptions.map((sub) => (
               <div
                 key={sub.channelId}
-                onClick={() => openSearch(sub.channelTitle)}
+                onClick={() => openChannel(sub.channelId)}
                 className="flex flex-col items-center gap-1.5 shrink-0 group cursor-pointer"
               >
                 <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden p-0.5 border-2 border-transparent group-hover:border-indigo-500 transition-all shadow-xs">

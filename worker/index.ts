@@ -626,6 +626,105 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
     const filtered = INITIAL_VIDEOS.filter((v) => v.id !== videoId);
     finalResponse = createJsonResponse({ data: filtered, isCached: true }, 200, 600);
   }
+  // 8. Channel details & videos route
+  else if (pathname.startsWith('/api/channel/')) {
+    const rawChannelId = decodeURIComponent(pathname.replace('/api/channel/', '').trim());
+    if (!rawChannelId) {
+      finalResponse = createJsonResponse({ error: 'BAD_REQUEST', message: 'Missing channel ID' }, 400);
+    } else if (apiKey) {
+      try {
+        let channelItem: ChannelItem | null = null;
+        let channelUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics,brandingSettings&id=${encodeURIComponent(rawChannelId)}&key=${apiKey}`;
+        if (rawChannelId.startsWith('@')) {
+          channelUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics,brandingSettings&forHandle=${encodeURIComponent(rawChannelId)}&key=${apiKey}`;
+        }
+        const chRes = await fetch(channelUrl);
+        if (chRes.ok) {
+          const chJson = await chRes.json() as any;
+          const item = chJson.items?.[0];
+          if (item) {
+            channelItem = {
+              id: item.id,
+              title: item.snippet?.title || 'YouTube Channel',
+              description: item.snippet?.description || '',
+              customUrl: item.snippet?.customUrl,
+              thumbnailUrl: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url,
+              bannerUrl: item.brandingSettings?.image?.bannerExternalUrl,
+              subscriberCount: item.statistics?.subscriberCount ? formatCount(item.statistics.subscriberCount) : undefined,
+              videoCount: item.statistics?.videoCount ? formatCount(item.statistics.videoCount) : undefined,
+              viewCount: item.statistics?.viewCount ? formatCount(item.statistics.viewCount) : undefined,
+              publishedAt: item.snippet?.publishedAt
+            };
+          }
+        }
+
+        // Fetch channel videos using search
+        let channelVideos: VideoItem[] = [];
+        const searchVidUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${encodeURIComponent(channelItem?.id || rawChannelId)}&type=video&order=date&maxResults=30&key=${apiKey}`;
+        const vidRes = await fetch(searchVidUrl);
+        if (vidRes.ok) {
+          const vidJson = await vidRes.json() as any;
+          const vIds = (vidJson.items || []).map((i: any) => i.id?.videoId).filter(Boolean);
+          if (vIds.length > 0) {
+            const vDetailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${vIds.join(',')}&key=${apiKey}`);
+            if (vDetailsRes.ok) {
+              const vDetailsJson = await vDetailsRes.json() as any;
+              channelVideos = (vDetailsJson.items || []).map((vItem: any) => ({
+                id: vItem.id,
+                title: vItem.snippet?.title || 'Video',
+                description: vItem.snippet?.description || '',
+                thumbnailUrl: vItem.snippet?.thumbnails?.high?.url || vItem.snippet?.thumbnails?.medium?.url,
+                channelId: vItem.snippet?.channelId || channelItem?.id || rawChannelId,
+                channelTitle: vItem.snippet?.channelTitle || channelItem?.title || 'Channel',
+                channelAvatarUrl: channelItem?.thumbnailUrl,
+                publishedAt: vItem.snippet?.publishedAt,
+                duration: vItem.contentDetails?.duration,
+                viewCount: vItem.statistics?.viewCount,
+                likeCount: vItem.statistics?.likeCount
+              }));
+            }
+          }
+        }
+
+        if (!channelItem) {
+          channelItem = {
+            id: rawChannelId,
+            title: rawChannelId.replace(/^channel_/, '').replace(/_/g, ' '),
+            description: 'Welcome to the official channel page on StreamHub.',
+            thumbnailUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${rawChannelId}`,
+            subscriberCount: '1.5M',
+            videoCount: '120'
+          };
+        }
+
+        if (channelVideos.length === 0) {
+          channelVideos = INITIAL_VIDEOS;
+        }
+
+        finalResponse = createJsonResponse({ channel: channelItem, data: channelVideos, isCached: false }, 200, 300);
+      } catch (err) {
+        const fallbackChannel: ChannelItem = {
+          id: rawChannelId,
+          title: rawChannelId.replace(/^channel_/, '').replace(/_/g, ' '),
+          description: 'Official channel on StreamHub.',
+          thumbnailUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${rawChannelId}`,
+          subscriberCount: '1.2M',
+          videoCount: '85'
+        };
+        finalResponse = createJsonResponse({ channel: fallbackChannel, data: INITIAL_VIDEOS, isCached: true }, 200, 180);
+      }
+    } else {
+      const fallbackChannel: ChannelItem = {
+        id: rawChannelId,
+        title: rawChannelId.replace(/^channel_/, '').replace(/_/g, ' '),
+        description: 'Official channel on StreamHub.',
+        thumbnailUrl: `https://api.dicebear.com/7.x/identicon/svg?seed=${rawChannelId}`,
+        subscriberCount: '1.2M',
+        videoCount: '85'
+      };
+      finalResponse = createJsonResponse({ channel: fallbackChannel, data: INITIAL_VIDEOS, apiKeyMissing: true, isCached: true }, 200, 300);
+    }
+  }
   // Default not found for unknown /api/*
   else {
     finalResponse = createJsonResponse({ error: 'NOT_FOUND', message: 'API route not found' }, 404);

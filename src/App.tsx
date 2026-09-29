@@ -18,6 +18,7 @@ import { LibraryPage } from './pages/LibraryPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { LikedVideosPage } from './pages/LikedVideosPage';
 import { SearchPage } from './pages/SearchPage';
+import { ChannelPage } from './pages/ChannelPage';
 import { TrendingPage } from './pages/TrendingPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -42,6 +43,7 @@ const AppContent: React.FC = () => {
     if (path === '/history') return <HistoryPage />;
     if (path === '/liked') return <LikedVideosPage />;
     if (path.startsWith('/search')) return <SearchPage />;
+    if (path.startsWith('/channel') || route.channelId) return <ChannelPage />;
     if (path === '/trending') return <TrendingPage />;
     if (path === '/profile') return <ProfilePage />;
 

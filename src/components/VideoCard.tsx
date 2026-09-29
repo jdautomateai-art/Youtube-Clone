@@ -8,7 +8,7 @@ interface VideoCardProps {
 }
 
 export const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
-  const { openVideo } = useNavigation();
+  const { openVideo, openChannel } = useNavigation();
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
 
@@ -21,6 +21,13 @@ export const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
     : video.thumbnailUrl;
 
   const avatar = video.channelAvatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${video.channelId || video.channelTitle}`;
+
+  const handleChannelClick = (e: React.MouseEvent) => {
+    if (video.channelId) {
+      e.stopPropagation();
+      openChannel(video.channelId);
+    }
+  };
 
   return (
     <article
@@ -54,7 +61,8 @@ export const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
           src={avatar}
           alt={video.channelTitle}
           loading="lazy"
-          className="w-9 h-9 rounded-full object-cover shrink-0 mt-0.5 bg-neutral-200 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-800"
+          onClick={handleChannelClick}
+          className="w-9 h-9 rounded-full object-cover shrink-0 mt-0.5 bg-neutral-200 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-800 hover:ring-2 hover:ring-indigo-500 transition-all cursor-pointer"
         />
 
         <div className="flex-1 min-w-0">
@@ -65,7 +73,10 @@ export const VideoCard: React.FC<VideoCardProps> = ({ video }) => {
             {video.title}
           </h2>
 
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 truncate hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors">
+          <p
+            onClick={handleChannelClick}
+            className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 truncate hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+          >
             {video.channelTitle}
           </p>
 
