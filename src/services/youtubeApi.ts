@@ -210,20 +210,26 @@ export async function fetchYouTubeComments(videoId: string): Promise<YouTubeComm
 }
 
 export async function fetchChannelDetails(
-  channelId: string
-): Promise<{ channel: ChannelItem; videos: VideoItem[] }> {
-  const cacheKey = `channel_${channelId}`;
+  channelId: string,
+  pageToken?: string,
+  order: 'date' | 'viewCount' = 'date'
+): Promise<{ channel: ChannelItem; videos: VideoItem[]; nextPageToken?: string }> {
+  const cacheKey = `channel_${channelId}_${order}_${pageToken || 'p1'}`;
   const cached = clientCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return cached.data;
   }
 
   try {
-    const res = await fetch(`/api/channel/${encodeURIComponent(channelId)}`);
+    const res = await fetch(`/api/channel/${encodeURIComponent(channelId)}?order=${order}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
     if (res.ok) {
       const json = await res.json();
       if (json.channel) {
-        const result = { channel: json.channel, videos: json.data || [] };
+        const result = {
+          channel: json.channel,
+          videos: json.data || [],
+          nextPageToken: json.nextPageToken
+        };
         clientCache.set(cacheKey, { data: result, timestamp: Date.now() });
         return result;
       }

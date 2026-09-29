@@ -16,7 +16,10 @@ import {
   Calendar,
   Eye,
   Tv,
-  ExternalLink
+  ExternalLink,
+  Loader2,
+  TrendingUp,
+  Clock
 } from 'lucide-react';
 
 export const ChannelPage: React.FC = () => {
@@ -26,7 +29,10 @@ export const ChannelPage: React.FC = () => {
 
   const [channel, setChannel] = useState<ChannelItem | null>(null);
   const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [nextPageToken, setNextPageToken] = useState<string | undefined>(undefined);
+  const [videoSort, setVideoSort] = useState<'date' | 'viewCount'>('date');
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
   const [activeTab, setActiveTab] = useState<'videos' | 'shorts' | 'about'>('videos');
@@ -39,10 +45,11 @@ export const ChannelPage: React.FC = () => {
       if (!channelId) return;
       setLoading(true);
       try {
-        const data = await fetchChannelDetails(channelId);
+        const data = await fetchChannelDetails(channelId, undefined, videoSort);
         if (isMounted) {
           setChannel(data.channel);
           setVideos(data.videos);
+          setNextPageToken(data.nextPageToken);
         }
       } catch (err) {
         console.error('Failed to load channel:', err);
@@ -58,6 +65,39 @@ export const ChannelPage: React.FC = () => {
     if (!channelId) return;
     checkIsChannelSubscribed(user?.uid || '', channelId).then(setSubscribed);
   }, [user, channelId]);
+
+  const handleSortChange = async (sort: 'date' | 'viewCount') => {
+    if (sort === videoSort) return;
+    setVideoSort(sort);
+    setLoading(true);
+    try {
+      const data = await fetchChannelDetails(channelId, undefined, sort);
+      setVideos(data.videos);
+      setNextPageToken(data.nextPageToken);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (!nextPageToken || loadingMore || !channelId) return;
+    setLoadingMore(true);
+    try {
+      const data = await fetchChannelDetails(channelId, nextPageToken, videoSort);
+      setVideos((prev) => {
+        const existingIds = new Set(prev.map((v) => v.id));
+        const newOnes = data.videos.filter((v) => !existingIds.has(v.id));
+        return [...prev, ...newOnes];
+      });
+      setNextPageToken(data.nextPageToken);
+    } catch (err) {
+      console.error('Load more channel videos error:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleToggleSubscribe = async () => {
     if (!user) {
@@ -127,6 +167,9 @@ export const ChannelPage: React.FC = () => {
   }
 
   const shortsVideos = videos.filter((v) => v.isShort || (v.durationSeconds && v.durationSeconds <= 60));
+  const originalYouTubeUrl = channel.customUrl
+    ? `https://www.youtube.com/${channel.customUrl}?sub_confirmation=1`
+    : `https://www.youtube.com/channel/${channel.id}?sub_confirmation=1`;
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-6 py-4 w-full">
@@ -192,6 +235,7 @@ export const ChannelPage: React.FC = () => {
 
           {/* Action Buttons */}
           <div className="flex items-center justify-center sm:justify-start gap-3 mt-4 flex-wrap">
+            {/* StreamHub App Subscribe Button */}
             <button
               onClick={handleToggleSubscribe}
               disabled={subscribing}
@@ -214,6 +258,22 @@ export const ChannelPage: React.FC = () => {
               )}
             </button>
 
+            {/* Subscribe to Original Channel on YouTube */}
+            <a
+              href={originalYouTubeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-sm hover:scale-102"
+              title="Subscribe to the original channel directly on YouTube"
+            >
+              <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+              <span>Subscribe on YouTube</span>
+              <ExternalLink size={13} className="opacity-80" />
+            </a>
+
+            {/* Share Channel Button */}
             <button
               onClick={handleShare}
               className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
@@ -236,7 +296,7 @@ export const ChannelPage: React.FC = () => {
           }`}
         >
           <Film size={16} />
-          <span>Videos ({videos.length})</span>
+          <span>Videos ({videos.length}{channel.videoCount ? ` / ${channel.videoCount}` : ''})</span>
         </button>
 
         {shortsVideos.length > 0 && (
@@ -269,11 +329,59 @@ export const ChannelPage: React.FC = () => {
       {/* Tab Content */}
       {activeTab === 'videos' && (
         <div>
+          {/* Sorting controls */}
+          <div className="flex items-center gap-2 mb-6">
+            <button
+              onClick={() => handleSortChange('date')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                videoSort === 'date'
+                  ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-xs'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              <Clock size={13} />
+              <span>Latest</span>
+            </button>
+            <button
+              onClick={() => handleSortChange('viewCount')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                videoSort === 'viewCount'
+                  ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-xs'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+              }`}
+            >
+              <TrendingUp size={13} />
+              <span>Popular</span>
+            </button>
+          </div>
+
           {videos.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-              {videos.map((vid) => (
-                <VideoCard key={vid.id} video={vid} />
-              ))}
+            <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                {videos.map((vid) => (
+                  <VideoCard key={vid.id} video={vid} />
+                ))}
+              </div>
+
+              {/* Load More Button */}
+              {nextPageToken && (
+                <div className="flex justify-center mt-10 mb-6">
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="flex items-center gap-2 px-8 py-3 rounded-full bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-900 dark:text-neutral-100 text-xs sm:text-sm font-semibold transition-all cursor-pointer shadow-xs disabled:opacity-50 hover:scale-102"
+                  >
+                    {loadingMore ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin text-indigo-500" />
+                        <span>Loading more videos...</span>
+                      </>
+                    ) : (
+                      <span>Load More Videos ({videos.length} loaded)</span>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="py-20 text-center text-neutral-500 text-sm">
@@ -329,23 +437,35 @@ export const ChannelPage: React.FC = () => {
               </p>
             </div>
 
-            {channel.customUrl && (
-              <div>
-                <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100 mb-2">Details</h3>
-                <div className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
-                  <span className="font-medium">Custom URL:</span>
-                  <a
-                    href={`https://youtube.com/${channel.customUrl}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-                  >
-                    <span>{channel.customUrl}</span>
-                    <ExternalLink size={13} />
-                  </a>
-                </div>
+            <div>
+              <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100 mb-2">Original Channel Links</h3>
+              <div className="flex flex-col gap-2.5">
+                <a
+                  href={originalYouTubeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-red-600 dark:text-red-400 font-semibold hover:underline"
+                >
+                  <span>Subscribe to official channel on YouTube</span>
+                  <ExternalLink size={14} />
+                </a>
+
+                {channel.customUrl && (
+                  <div className="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
+                    <span className="font-medium">Custom Handle:</span>
+                    <a
+                      href={`https://youtube.com/${channel.customUrl}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                    >
+                      <span>{channel.customUrl}</span>
+                      <ExternalLink size={13} />
+                    </a>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           <div className="space-y-4 p-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700/60 h-fit">

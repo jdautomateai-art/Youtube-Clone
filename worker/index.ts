@@ -629,11 +629,15 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
   // 8. Channel details & videos route
   else if (pathname.startsWith('/api/channel/')) {
     const rawChannelId = decodeURIComponent(pathname.replace('/api/channel/', '').trim());
+    const pageToken = url.searchParams.get('pageToken') || undefined;
+    const order = url.searchParams.get('order') || 'date';
+
     if (!rawChannelId) {
       finalResponse = createJsonResponse({ error: 'BAD_REQUEST', message: 'Missing channel ID' }, 400);
     } else if (apiKey) {
       try {
         let channelItem: ChannelItem | null = null;
+        let uploadsPlaylistId: string | null = null;
         let channelUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics,brandingSettings&id=${encodeURIComponent(rawChannelId)}&key=${apiKey}`;
         if (rawChannelId.startsWith('@')) {
           channelUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails,statistics,brandingSettings&forHandle=${encodeURIComponent(rawChannelId)}&key=${apiKey}`;
@@ -643,6 +647,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
           const chJson = await chRes.json() as any;
           const item = chJson.items?.[0];
           if (item) {
+            uploadsPlaylistId = item.contentDetails?.relatedPlaylists?.uploads || null;
             channelItem = {
               id: item.id,
               title: item.snippet?.title || 'YouTube Channel',
@@ -658,30 +663,65 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
           }
         }
 
-        // Fetch channel videos using search
+        // Fetch channel videos using uploads playlist or search
         let channelVideos: VideoItem[] = [];
-        const searchVidUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${encodeURIComponent(channelItem?.id || rawChannelId)}&type=video&order=date&maxResults=30&key=${apiKey}`;
-        const vidRes = await fetch(searchVidUrl);
-        if (vidRes.ok) {
-          const vidJson = await vidRes.json() as any;
-          const vIds = (vidJson.items || []).map((i: any) => i.id?.videoId).filter(Boolean);
-          if (vIds.length > 0) {
-            const vDetailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${vIds.join(',')}&key=${apiKey}`);
-            if (vDetailsRes.ok) {
-              const vDetailsJson = await vDetailsRes.json() as any;
-              channelVideos = (vDetailsJson.items || []).map((vItem: any) => ({
-                id: vItem.id,
-                title: vItem.snippet?.title || 'Video',
-                description: vItem.snippet?.description || '',
-                thumbnailUrl: vItem.snippet?.thumbnails?.high?.url || vItem.snippet?.thumbnails?.medium?.url,
-                channelId: vItem.snippet?.channelId || channelItem?.id || rawChannelId,
-                channelTitle: vItem.snippet?.channelTitle || channelItem?.title || 'Channel',
-                channelAvatarUrl: channelItem?.thumbnailUrl,
-                publishedAt: vItem.snippet?.publishedAt,
-                duration: vItem.contentDetails?.duration,
-                viewCount: vItem.statistics?.viewCount,
-                likeCount: vItem.statistics?.likeCount
-              }));
+        let nextPageToken: string | undefined = undefined;
+
+        if (order === 'date' && uploadsPlaylistId) {
+          const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${encodeURIComponent(uploadsPlaylistId)}&maxResults=50&key=${apiKey}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+          const plRes = await fetch(playlistUrl);
+          if (plRes.ok) {
+            const plJson = await plRes.json() as any;
+            nextPageToken = plJson.nextPageToken;
+            const vIds = (plJson.items || []).map((i: any) => i.contentDetails?.videoId).filter(Boolean);
+            if (vIds.length > 0) {
+              const vDetailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${vIds.join(',')}&key=${apiKey}`);
+              if (vDetailsRes.ok) {
+                const vDetailsJson = await vDetailsRes.json() as any;
+                channelVideos = (vDetailsJson.items || []).map((vItem: any) => ({
+                  id: vItem.id,
+                  title: vItem.snippet?.title || 'Video',
+                  description: vItem.snippet?.description || '',
+                  thumbnailUrl: vItem.snippet?.thumbnails?.high?.url || vItem.snippet?.thumbnails?.medium?.url,
+                  channelId: vItem.snippet?.channelId || channelItem?.id || rawChannelId,
+                  channelTitle: vItem.snippet?.channelTitle || channelItem?.title || 'Channel',
+                  channelAvatarUrl: channelItem?.thumbnailUrl,
+                  publishedAt: vItem.snippet?.publishedAt,
+                  duration: vItem.contentDetails?.duration,
+                  viewCount: vItem.statistics?.viewCount,
+                  likeCount: vItem.statistics?.likeCount
+                }));
+              }
+            }
+          }
+        }
+
+        // Fallback to search if playlist didn't yield or order is viewCount
+        if (channelVideos.length === 0) {
+          const searchVidUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${encodeURIComponent(channelItem?.id || rawChannelId)}&type=video&order=${order === 'viewCount' ? 'viewCount' : 'date'}&maxResults=50&key=${apiKey}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`;
+          const vidRes = await fetch(searchVidUrl);
+          if (vidRes.ok) {
+            const vidJson = await vidRes.json() as any;
+            nextPageToken = vidJson.nextPageToken;
+            const vIds = (vidJson.items || []).map((i: any) => i.id?.videoId).filter(Boolean);
+            if (vIds.length > 0) {
+              const vDetailsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${vIds.join(',')}&key=${apiKey}`);
+              if (vDetailsRes.ok) {
+                const vDetailsJson = await vDetailsRes.json() as any;
+                channelVideos = (vDetailsJson.items || []).map((vItem: any) => ({
+                  id: vItem.id,
+                  title: vItem.snippet?.title || 'Video',
+                  description: vItem.snippet?.description || '',
+                  thumbnailUrl: vItem.snippet?.thumbnails?.high?.url || vItem.snippet?.thumbnails?.medium?.url,
+                  channelId: vItem.snippet?.channelId || channelItem?.id || rawChannelId,
+                  channelTitle: vItem.snippet?.channelTitle || channelItem?.title || 'Channel',
+                  channelAvatarUrl: channelItem?.thumbnailUrl,
+                  publishedAt: vItem.snippet?.publishedAt,
+                  duration: vItem.contentDetails?.duration,
+                  viewCount: vItem.statistics?.viewCount,
+                  likeCount: vItem.statistics?.likeCount
+                }));
+              }
             }
           }
         }
@@ -701,7 +741,7 @@ export async function handleApiRequest(request: Request, env: Env, ctx?: Executi
           channelVideos = INITIAL_VIDEOS;
         }
 
-        finalResponse = createJsonResponse({ channel: channelItem, data: channelVideos, isCached: false }, 200, 300);
+        finalResponse = createJsonResponse({ channel: channelItem, data: channelVideos, nextPageToken, isCached: false }, 200, 300);
       } catch (err) {
         const fallbackChannel: ChannelItem = {
           id: rawChannelId,
